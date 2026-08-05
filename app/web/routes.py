@@ -160,20 +160,6 @@ async def generate_manifest(request: Request):
             ),
 
 
-        "jackett_url":
-            form.get(
-                "jackett_url",
-                "http://jackett:9117"
-            ),
-
-
-        "jackett_api_key":
-            form.get(
-                "jackett_api_key",
-                ""
-            ),
-
-
         "resolution":
             form.getlist(
                 "resolution"
