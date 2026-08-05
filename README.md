@@ -1,5 +1,7 @@
 # cauldron
-🧙 A modular, open-source torrent & debrid aggregation engine for Stremio.Torrentio-Debrid
+🧙 A modular, open-source torrent & debrid aggregation engine for Stremio
+
+.Torrentio-Debrid
 An open-source torrent search + debrid resolution service, It works as:
 A Stremio addon — install your own personal URL (with your debrid API
 key baked in) and get streams straight in the Stremio app.
