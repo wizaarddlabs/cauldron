@@ -15,7 +15,7 @@ Stremio / your app
   FastAPI service  ──────►  Jackett (your own instance)  ──► indexers YOU configure
         │
         ▼
-  Debrid provider (Real-Debrid / AllDebrid / Premiumize / TorBox)
+  Debrid provider (Real-Debrid / Premiumize / TorBox)
         │
         ▼
   Direct playback link
