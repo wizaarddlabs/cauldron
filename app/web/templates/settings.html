@@ -337,29 +337,23 @@ Copy this URL into Stremio:
 </button>
 
 
+{% if manifest %}
 
-</form>
+<div class="card">
 
+<h2>🧙 Your Cauldron Manifest</h2>
+
+<input
+type="text"
+value="{{ manifest }}"
+readonly
+onclick="this.select()"
+>
+
+<p>
+Copy this URL into Stremio.
+</p>
 
 </div>
 
-
-<script>
-
-function copyManifest(){
-
-    const text =
-    document.getElementById("manifestUrl").innerText;
-
-    navigator.clipboard.writeText(text);
-
-    alert("Manifest URL copied!");
-
-}
-
-</script>
-
-
-</body>
-
-</html>
+{% endif %}

@@ -19,9 +19,6 @@ templates = Jinja2Templates(
 )
 
 
-LAST_MANIFEST = None
-
-
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -29,13 +26,17 @@ async def home(request: Request):
     prefs = get_preferences()
     settings = get_settings()
 
+    manifest = request.query_params.get(
+        "manifest"
+    )
+
     return templates.TemplateResponse(
         "settings.html",
         {
             "request": request,
             "prefs": prefs,
             "settings": settings,
-            "manifest": LAST_MANIFEST
+            "manifest": manifest
         }
     )
 
@@ -123,9 +124,6 @@ async def update_settings(request: Request):
 @router.post("/generate")
 async def generate_manifest(request: Request):
 
-    global LAST_MANIFEST
-
-
     form = await request.form()
 
 
@@ -189,23 +187,23 @@ async def generate_manifest(request: Request):
     )
 
 
-    # Build public HTTPS URL behind Nginx Proxy Manager
     scheme = request.headers.get(
         "x-forwarded-proto",
         "https"
     )
+
 
     host = request.headers.get(
         "host"
     )
 
 
-    LAST_MANIFEST = (
+    manifest_url = (
         f"{scheme}://{host}/{config_id}/manifest.json"
     )
 
 
     return RedirectResponse(
-        "/",
+        f"/?manifest={manifest_url}",
         status_code=303
     )
