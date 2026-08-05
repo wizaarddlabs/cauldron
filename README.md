@@ -1,4 +1,4 @@
-# cauldron
+# 🧉Cauldron
 🧙 A modular, open-source torrent & debrid aggregation engine for Stremio
 
 .Torrentio-Debrid
