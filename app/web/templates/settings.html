@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Cauldron Wizard</title>
+
+<link rel="stylesheet" href="/static/style.css">
+
+<style>
+
+.logo {
+    width:150px;
+    display:block;
+    margin:auto;
+}
+
+
+.card {
+
+    background:#1e1e1e;
+    padding:25px;
+    border-radius:20px;
+    margin-bottom:20px;
+
+}
+
+
+.pills {
+
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+
+}
+
+
+.pill input {
+
+    display:none;
+
+}
+
+
+.pill label {
+
+    display:block;
+    padding:10px 18px;
+    border-radius:25px;
+    background:#333;
+    cursor:pointer;
+    transition:.2s;
+
+}
+
+
+.pill input:checked + label {
+
+    background:#ffd700;
+    color:#111;
+    font-weight:bold;
+
+}
+
+
+
+input[type=text],
+input[type=password] {
+
+    width:100%;
+    padding:12px;
+    border-radius:12px;
+    background:#333;
+    border:0;
+    color:white;
+    margin-bottom:12px;
+
+}
+
+
+button {
+
+    width:100%;
+    padding:15px;
+    border-radius:20px;
+    border:0;
+    background:#ffd700;
+    font-size:18px;
+    font-weight:bold;
+    cursor:pointer;
+
+}
+
+
+.copy {
+
+    background:#333;
+    color:#ffd700;
+    margin-top:10px;
+
+}
+
+
+.manifest-box {
+
+    background:#111;
+    padding:15px;
+    border-radius:12px;
+    word-break:break-all;
+    color:#ffd700;
+
+}
+
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<div class="cauldron">
+
+
+<img class="logo" src="/static/cauldron.png">
+
+
+<h1>
+🧙 Cauldron
+</h1>
+
+
+{% if manifest %}
+
+<div class="card">
+
+<h2>⚡ Your Cauldron Manifest</h2>
+
+<p>
+Copy this URL into Stremio:
+</p>
+
+<div class="manifest-box" id="manifestUrl">
+{{ manifest }}
+</div>
+
+<button type="button" class="copy" onclick="copyManifest()">
+📋 Copy Manifest URL
+</button>
+
+</div>
+
+{% endif %}
+
+
+
+<form method="post" action="/generate">
+
+
+<div class="card">
+
+<h2>Debrid</h2>
+
+
+<label>TorBox API Key</label>
+<input type="password" name="torbox_key">
+
+
+<label>Real-Debrid API Key</label>
+<input type="password" name="realdebrid_key">
+
+
+<label>Premiumize API Key</label>
+<input type="password" name="premiumize_key">
+
+
+</div>
+
+
+
+
+<div class="card">
+
+<h2>Jackett</h2>
+
+
+<input 
+type="text"
+name="jackett_url"
+value="http://jackett:9117">
+
+
+<input
+type="password"
+name="jackett_api_key"
+placeholder="Jackett API Key">
+
+
+</div>
+
+
+
+
+
+<div class="card">
+
+
+<h2>Resolution</h2>
+
+
+<div class="pills">
+
+
+<div class="pill">
+<input id="4k" type="checkbox" name="resolution" value="2160p">
+<label for="4k">4K</label>
+</div>
+
+
+<div class="pill">
+<input id="1080" type="checkbox" name="resolution" value="1080p">
+<label for="1080">1080p</label>
+</div>
+
+
+<div class="pill">
+<input id="720" type="checkbox" name="resolution" value="720p">
+<label for="720">720p</label>
+</div>
+
+
+</div>
+
+
+</div>
+
+
+
+
+
+<div class="card">
+
+
+<h2>Language</h2>
+
+
+<div class="pills">
+
+
+<div class="pill">
+<input id="eng" type="checkbox" name="language" value="english">
+<label for="eng">English</label>
+</div>
+
+
+<div class="pill">
+<input id="spa" type="checkbox" name="language" value="spanish">
+<label for="spa">Spanish</label>
+</div>
+
+
+<div class="pill">
+<input id="ger" type="checkbox" name="language" value="german">
+<label for="ger">German</label>
+</div>
+
+
+</div>
+
+
+</div>
+
+
+
+
+
+
+<div class="card">
+
+
+<h2>Quality</h2>
+
+
+<div class="pills">
+
+
+<div class="pill">
+<input id="hdr" type="checkbox" name="filters" value="hdr">
+<label for="hdr">HDR</label>
+</div>
+
+
+<div class="pill">
+<input id="dv" type="checkbox" name="filters" value="dolby">
+<label for="dv">Dolby Vision</label>
+</div>
+
+
+<div class="pill">
+<input id="remux" type="checkbox" name="filters" value="remux">
+<label for="remux">Remux</label>
+</div>
+
+
+<div class="pill">
+<input id="hevc" type="checkbox" name="filters" value="hevc">
+<label for="hevc">HEVC</label>
+</div>
+
+
+<div class="pill">
+<input id="atmos" type="checkbox" name="filters" value="atmos">
+<label for="atmos">Atmos</label>
+</div>
+
+
+</div>
+
+
+</div>
+
+
+
+
+
+<div class="card">
+
+
+<h2>Options</h2>
+
+
+<div class="pills">
+
+
+<div class="pill">
+<input id="cached" type="checkbox" name="cached_only">
+<label for="cached">Cached Only</label>
+</div>
+
+
+</div>
+
+
+</div>
+
+
+
+
+
+<button>
+
+🧙 Create Cauldron Manifest
+
+</button>
+
+
+
+</form>
+
+
+</div>
+
+
+<script>
+
+function copyManifest(){
+
+    const text =
+    document.getElementById("manifestUrl").innerText;
+
+    navigator.clipboard.writeText(text);
+
+    alert("Manifest URL copied!");
+
+}
+
+</script>
+
+
+</body>
+
+</html>

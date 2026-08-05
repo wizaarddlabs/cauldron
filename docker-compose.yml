@@ -1,33 +1,75 @@
 services:
+
   app:
     build: .
+    container_name: cauldron-app
+
     ports:
-      - "8000:8000"
+      - "8008:8000"
+
+    labels:
+      - "net.unraid.docker.icon=https://raw.githubusercontent.com/wizaarddlabs/cauldron/main/cauldron-removebg-preview.png"
+
+    volumes:
+      - ./app:/srv/app
+      - ./data:/data
+
     environment:
       - JACKETT_URL=http://jackett:9117
-      - JACKETT_API_KEY=${JACKETT_API_KEY}
       - JACKETT_INDEXERS=${JACKETT_INDEXERS:-all}
       - REDIS_URL=redis://redis:6379/0
+      - JACKETT_API_KEY=${JACKETT_API_KEY}
+
     depends_on:
       - jackett
       - redis
+      - flaresolverr
+
     restart: unless-stopped
+
 
   jackett:
     image: lscr.io/linuxserver/jackett:latest
+    container_name: cauldron-jackett
+
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
+
+    labels:
+      - "net.unraid.docker.icon=https://raw.githubusercontent.com/linuxserver/docker-templates/master/linuxserver.io/img/jackett-logo.png"
+
     volumes:
       - jackett-config:/config
+
     ports:
       - "9117:9117"
+
     restart: unless-stopped
+
 
   redis:
     image: redis:7-alpine
+    container_name: cauldron-redis
+
     restart: unless-stopped
 
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: cauldron-flaresolverr
+
+    environment:
+      - LOG_LEVEL=info
+      - TZ=Etc/UTC
+
+    ports:
+      - "8191:8191"
+
+    restart: unless-stopped
+
+
 volumes:
+
   jackett-config:

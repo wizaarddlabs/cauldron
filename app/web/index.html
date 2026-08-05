@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cauldron</title>
+
+    <link rel="icon" type="image/png" href="/static/cauldron.png">
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at top, #33215f 0%, #120d20 45%, #080611 100%);
+            color: #f5f2ff;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: auto;
+            padding: 40px 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            width: 140px;
+            height: 140px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 20px rgba(255,215,0,.35));
+        }
+
+        h1 {
+            font-size: 48px;
+            margin: 15px 0 5px;
+            background: linear-gradient(90deg,#ffd700,#fff3a0);
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        .subtitle {
+            color: #bcb5d6;
+            font-size: 18px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit,minmax(250px,1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: rgba(255,255,255,.08);
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 18px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            color: #ffd700;
+        }
+
+        .pill {
+            display:inline-block;
+            padding:8px 14px;
+            border-radius:999px;
+            font-size:14px;
+            margin:5px;
+            background:#2b2540;
+        }
+
+        .online {
+            background:#16803c;
+            color:white;
+        }
+
+        .offline {
+            background:#8b1e1e;
+            color:white;
+        }
+
+        button {
+            background:#ffd700;
+            color:#111;
+            border:none;
+            padding:12px 20px;
+            border-radius:999px;
+            cursor:pointer;
+            font-weight:bold;
+        }
+
+        footer {
+            text-align:center;
+            margin-top:50px;
+            color:#777;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <img class="logo" src="/static/cauldron.png" alt="Cauldron Logo">
+
+        <h1>Cauldron</h1>
+
+        <div class="subtitle">
+            Wizard-powered torrent search & debrid engine
+        </div>
+    </div>
+
+
+    <div class="grid">
+
+        <div class="card">
+            <h2>🔥 Services</h2>
+
+            <div id="services">
+                Loading...
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h2>🧙 About</h2>
+
+            <p>
+                Cauldron is an open-source Stremio compatible search engine
+                built around Jackett, Redis, and debrid services.
+            </p>
+
+            <p>
+                Brew your media magic.
+            </p>
+        </div>
+
+
+        <div class="card">
+            <h2>⚙️ Status</h2>
+
+            <p>
+                API:
+                <span class="pill online">Running</span>
+            </p>
+
+            <p>
+                Version:
+                <span class="pill">
+                    v0.1.0
+                </span>
+            </p>
+        </div>
+
+    </div>
+
+
+    <footer>
+        Cauldron • Open Source
+    </footer>
+
+</div>
+
+
+<script>
+
+async function loadStatus(){
+
+    try {
+
+        const res = await fetch("/api/status");
+
+        const data = await res.json();
+
+        let html = "";
+
+        for(const [service,status] of Object.entries(data)){
+
+            const cls =
+                status === "online" ||
+                status === "ready"
+                ? "online"
+                : "offline";
+
+
+            html += `
+                <div>
+                    ${service.toUpperCase()}
+                    <span class="pill ${cls}">
+                        ${status}
+                    </span>
+                </div>
+            `;
+        }
+
+
+        document.getElementById("services").innerHTML = html;
+
+    }
+    catch(e){
+
+        document.getElementById("services").innerHTML =
+            '<span class="pill offline">API unavailable</span>';
+
+    }
+
+}
+
+
+loadStatus();
+
+setInterval(loadStatus,10000);
+
+</script>
+
+
+</body>
+</html>

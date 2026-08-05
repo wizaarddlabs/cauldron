@@ -13,10 +13,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # --- General ---
-    app_name: str = "torrentio-debrid"
+    app_name: str = "Cauldron"
     log_level: str = "INFO"
-    addon_id: str = "community.torrentio-debrid"
-    addon_name: str = "Torrentio-Debrid"
+    addon_id: str = "community.cauldron"
+    addon_name: str = "Cauldron"
     addon_version: str = "0.1.0"
 
     # --- Jackett (self-hosted torrent indexer aggregator) ---

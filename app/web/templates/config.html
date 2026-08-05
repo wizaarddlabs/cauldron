@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Cauldron Wizard</title>
+
+<link rel="stylesheet" href="/static/style.css">
+
+</head>
+
+
+<body>
+
+
+<div class="cauldron">
+
+
+<img 
+src="/static/cauldron.png"
+style="width:120px"
+>
+
+
+<h1>🧙 Cauldron</h1>
+
+<h2>Configuration Wizard</h2>
+
+
+<form method="post">
+
+
+<label>
+Addon Name
+</label>
+
+<input 
+name="addon_name"
+value="Cauldron"
+>
+
+
+<h3>Jackett</h3>
+
+
+<label>
+Jackett URL
+</label>
+
+<input
+name="jackett_url"
+placeholder="http://jackett:9117"
+>
+
+
+<label>
+Jackett API Key
+</label>
+
+<input
+name="jackett_api_key"
+>
+
+
+<h3>Debrid Provider</h3>
+
+
+<select name="debrid_provider">
+
+<option value="torbox">
+Torbox
+</option>
+
+
+<option value="realdebrid">
+Real-Debrid
+</option>
+
+
+<option value="premiumize">
+Premiumize
+</option>
+
+
+</select>
+
+
+<h3>Keys</h3>
+
+
+<input
+name="torbox_key"
+placeholder="Torbox API Key"
+>
+
+
+<input
+name="realdebrid_key"
+placeholder="Real-Debrid Token"
+>
+
+
+<input
+name="premiumize_key"
+placeholder="Premiumize Token"
+>
+
+
+
+<br><br>
+
+
+<button>
+Create Cauldron
+</button>
+
+
+</form>
+
+
+</div>
+
+
+</body>
+
+</html>
