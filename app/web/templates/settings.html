@@ -217,6 +217,58 @@
     <div class="pills">
       <div class="pill"><input id="cached" type="checkbox" name="cached_only" {% if prefs.cached_only %}checked{% endif %}><label for="cached">Cached Only</label></div>
       <div class="pill"><input id="allow_cam" type="checkbox" name="allow_cam" value="1" {% if prefs.allow_cam %}checked{% endif %}><label for="allow_cam">Allow CAM/Low Quality</label></div>
+      <div class="pill"><input id="allow_season_packs" type="checkbox" name="allow_season_packs" value="1" {% if prefs.allow_season_packs %}checked{% endif %}><label for="allow_season_packs">Allow Season Packs</label></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sort By (click to reorder)</h2>
+    <div class="muted small">Click up/down arrows to set priority order. Top = highest priority.</div>
+    <div class="sortable-list" id="sortCriteria">
+      <div class="sortable-item" data-value="seeders">
+        <span class="sort-controls">
+          <button type="button" class="sort-btn up" onclick="moveItem(this, -1)">▲</button>
+          <button type="button" class="sort-btn down" onclick="moveItem(this, 1)">▼</button>
+        </span>
+        <span>Seeders</span>
+      </div>
+      <div class="sortable-item" data-value="size">
+        <span class="sort-controls">
+          <button type="button" class="sort-btn up" onclick="moveItem(this, -1)">▲</button>
+          <button type="button" class="sort-btn down" onclick="moveItem(this, 1)">▼</button>
+        </span>
+        <span>Size</span>
+      </div>
+      <div class="sortable-item" data-value="resolution">
+        <span class="sort-controls">
+          <button type="button" class="sort-btn up" onclick="moveItem(this, -1)">▲</button>
+          <button type="button" class="sort-btn down" onclick="moveItem(this, 1)">▼</button>
+        </span>
+        <span>Resolution</span>
+      </div>
+      <div class="sortable-item" data-value="quality">
+        <span class="sort-controls">
+          <button type="button" class="sort-btn up" onclick="moveItem(this, -1)">▲</button>
+          <button type="button" class="sort-btn down" onclick="moveItem(this, 1)">▼</button>
+        </span>
+        <span>Quality Score</span>
+      </div>
+      <div class="sortable-item" data-value="cached">
+        <span class="sort-controls">
+          <button type="button" class="sort-btn up" onclick="moveItem(this, -1)">▲</button>
+          <button type="button" class="sort-btn down" onclick="moveItem(this, 1)">▼</button>
+        </span>
+        <span>Cache Status</span>
+      </div>
+    </div>
+    <input type="hidden" name="sort_criteria" id="sortCriteriaInput" value="{% if prefs.sort_criteria and prefs.sort_criteria[0] %}{{ prefs.sort_criteria | join(',') }}{% else %}seeders,resolution,quality{% endif %}">
+    
+    <div style="margin-top:15px">
+      <label>Sort Order</label>
+      <select name="sort_order">
+        <option value="desc" {% if prefs.sort_order == 'desc' %}selected{% endif %}>Descending</option>
+        <option value="asc" {% if prefs.sort_order == 'asc' %}selected{% endif %}>Ascending</option>
+      </select>
     </div>
   </div>
 

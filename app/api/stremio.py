@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.scrapers.aggregator import search_all
 from app.debrid.factory import get_debrid_client
 from app.models import DebridProvider, CacheStatus
 from app.config_store import load_config
+from app.filtering.sorting import sort_torrents
 
 router = APIRouter()
 
@@ -48,6 +49,59 @@ def normalize_debrid(cfg):
     return None, None
 
 
+@router.get("/{config}/playback/{info_hash}")
+async def playback(
+    config: str,
+    info_hash: str,
+    file_index: int = Query(None, alias="fileIndex")
+):
+    """
+    Playback endpoint - generates debrid streaming URL on demand.
+    Called when user clicks play on a stream.
+    """
+    try:
+        print("=== CAULDRON PLAYBACK REQUEST ===", flush=True)
+        print(f"INFO_HASH: {info_hash}", flush=True)
+        print(f"FILE_INDEX: {file_index}", flush=True)
+
+        cfg = _decode_config(config)
+
+        # Get debrid credentials
+        provider_str, api_key = normalize_debrid(cfg)
+        debrid_client = None
+
+        if provider_str and api_key:
+            try:
+                provider = DebridProvider(provider_str)
+                debrid_client = get_debrid_client(provider, api_key)
+                print(f"Using debrid provider: {provider_str}", flush=True)
+            except Exception as e:
+                print(f"Error initializing debrid client: {e}", flush=True)
+                raise HTTPException(500, "Debrid service not available")
+
+        if not debrid_client:
+            raise HTTPException(400, "No debrid credentials configured")
+
+        # Construct magnet for this info_hash
+        magnet = f"magnet:?xt=urn:btih:{info_hash}"
+        
+        # Add to debrid and get playback link
+        torrent_id = await debrid_client.add_magnet(magnet)
+        playback_info = await debrid_client.get_playback_link(torrent_id, file_index)
+        
+        print(f"Generated playback URL: {playback_info.playback_url[:50]}...", flush=True)
+
+        # Return redirect to the debrid URL
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=playback_info.playback_url)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"PLAYBACK ERROR: {repr(e)}", flush=True)
+        raise HTTPException(500, str(e))
+
+
 @router.get("/{config}/stream/{type}/{id}.json")
 async def stream(
     config: str,
@@ -75,6 +129,8 @@ async def stream(
                 print(f"Using debrid provider: {provider_str}", flush=True)
             except Exception as e:
                 print(f"Error initializing debrid client: {e}", flush=True)
+        else:
+            print("No debrid credentials configured - using pure torrent mode", flush=True)
 
         parts = id.split(":")
 
@@ -126,6 +182,9 @@ async def stream(
                 info_hashes = [t.info_hash for t in torrents]
                 cache_status_map = await debrid_client.check_cache(info_hashes)
                 print(f"Cache check completed for {len(info_hashes)} torrents", flush=True)
+                # Log some cache statuses for debugging
+                for info_hash, status in list(cache_status_map.items())[:5]:
+                    print(f"  {info_hash[:16]}... -> {status}", flush=True)
             except Exception as e:
                 print(f"Error checking cache: {e}", flush=True)
 
@@ -180,12 +239,32 @@ async def stream(
             print(f"After cached_only filter: {len(torrents)} torrents", flush=True)
 
 
+        # Apply sorting based on user preferences
+        sort_criteria = cfg.get("sort_criteria")
+        if isinstance(sort_criteria, str):
+            sort_criteria = sort_criteria.split(",") if sort_criteria else ["seeders", "resolution", "quality"]
+        elif not sort_criteria:
+            sort_criteria = ["seeders", "resolution", "quality"]
+        
+        sort_order = cfg.get("sort_order", "desc")
+        allow_season_packs = cfg.get("allow_season_packs", False)
+        
+        torrents = sort_torrents(
+            torrents,
+            sort_criteria=sort_criteria,
+            sort_order=sort_order,
+            allow_season_packs=allow_season_packs,
+            cache_status_map=cache_status_map if debrid_client else None
+        )
+        print(f"After sorting by {sort_criteria} {sort_order}: {len(torrents)} torrents", flush=True)
+
+
         output = []
 
 
         for torrent in torrents[:25]:
 
-            # Determine stream name based on cache status
+            # Determine stream name based on cache status and debrid configuration
             cache_status = cache_status_map.get(torrent.info_hash, CacheStatus.UNKNOWN)
             stream_name = "Cauldron"
 
@@ -193,23 +272,40 @@ async def stream(
                 if cache_status == CacheStatus.CACHED:
                     stream_name = "⚡ Cauldron (Cached)"
                 elif cache_status == CacheStatus.NOT_CACHED:
-                    stream_name = "⏳ Cauldron (Debrid)"
+                    stream_name = "⏳ Cauldron (uncached)"
                 else:
-                    stream_name = "⏳ Cauldron (Debrid)"
+                    stream_name = "⏳ Cauldron (uncached)"
+            else:
+                # No debrid configured - pure P2P
+                stream_name = "Cauldron (P2P)"
 
-            stream_data = {
-                "name": stream_name,
-                "title": torrent.title,
-                "infoHash": torrent.info_hash,
-                "sources": [f"magnet:{torrent.magnet}"],
-                "behaviorHints": {
-                    "bingeGroup": "cauldron"
+            # Build stream URL
+            if debrid_client:
+                # Use playback endpoint for debrid streams
+                from app.config import get_settings
+                settings = get_settings()
+                base_url = settings.addon_url.rstrip('/')
+                stream_url = f"{base_url}/{config}/playback/{torrent.info_hash}"
+                
+                stream_data = {
+                    "name": stream_name,
+                    "title": torrent.title,
+                    "url": stream_url,
+                    "behaviorHints": {
+                        "bingeGroup": "cauldron"
+                    }
                 }
-            }
-
-            # Add cache status to behavior hints for Stremio
-            if debrid_client and cache_status == CacheStatus.CACHED:
-                stream_data["behaviorHints"]["notWatched"] = False
+            else:
+                # Use magnet for P2P
+                stream_data = {
+                    "name": stream_name,
+                    "title": torrent.title,
+                    "infoHash": torrent.info_hash,
+                    "sources": [f"magnet:{torrent.magnet}"],
+                    "behaviorHints": {
+                        "bingeGroup": "cauldron"
+                    }
+                }
 
             output.append(stream_data)
 

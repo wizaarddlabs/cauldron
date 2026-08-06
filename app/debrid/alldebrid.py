@@ -64,26 +64,30 @@ class AllDebridClient(DebridClient):
     async def get_playback_link(
         self, torrent_id: str, file_index: Optional[int] = None
     ) -> ResolveResponse:
-        files = await self.list_files(torrent_id)
-        if not files:
-            raise RuntimeError("Torrent not yet ready on AllDebrid (still downloading?)")
+        try:
+            files = await self.list_files(torrent_id)
+            if not files:
+                raise RuntimeError("Torrent not yet ready on AllDebrid (still downloading?)")
 
-        idx = file_index if file_index is not None and file_index < len(files) else 0
-        chosen = files[idx]
-        link = chosen.get("link")
+            idx = file_index if file_index is not None and file_index < len(files) else 0
+            chosen = files[idx]
+            link = chosen.get("link")
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                f"{self._base}/link/unlock", params={**self._params, "link": link}
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    f"{self._base}/link/unlock", params={**self._params, "link": link}
+                )
+                resp.raise_for_status()
+                unlocked = resp.json()["data"]
+
+            return ResolveResponse(
+                playback_url=unlocked["link"],
+                file_name=unlocked.get("filename", chosen.get("filename")),
+                provider="alldebrid",
             )
-            resp.raise_for_status()
-            unlocked = resp.json()["data"]
-
-        return ResolveResponse(
-            playback_url=unlocked["link"],
-            file_name=unlocked.get("filename", chosen.get("filename")),
-            provider="alldebrid",
-        )
+        except Exception as e:
+            print(f"Error getting AllDebrid playback link: {e}, torrent may not be ready", flush=True)
+            raise
 
     async def list_user_torrents(self) -> list[dict]:
         """

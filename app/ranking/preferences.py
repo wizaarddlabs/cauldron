@@ -50,9 +50,15 @@ class RankingPreferences:
 
     allow_cam: bool = False
 
+    allow_season_packs: bool = False
+
     min_seeders: int = 0
 
     seeder_weight: float = 1.0
+
+    # Sorting
+    sort_criteria: list[str] = field(default_factory=lambda: ["seeders", "resolution", "quality"])
+    sort_order: str = "desc"
 
     # Additional fields from web form
     filters: list[str] = field(default_factory=list)

@@ -20,6 +20,42 @@ templates = Jinja2Templates(
 )
 
 
+@router.get("/manifest.json")
+async def manifest():
+    from app.config import get_settings
+    settings = get_settings()
+    
+    return {
+        "id": settings.addon_id,
+        "version": settings.addon_version,
+        "name": settings.addon_name,
+        "description": "Open-source torrent search + debrid resolution service.",
+        "types": ["movie", "series"],
+        "catalogs": [],
+        "resources": ["stream"],
+        "background": f"{settings.addon_url}/static/cauldron.png",
+        "logo": f"{settings.addon_url}/static/cauldron.png"
+    }
+
+
+@router.get("/{config_id}/manifest.json")
+async def config_manifest(config_id: str):
+    from app.config import get_settings
+    settings = get_settings()
+    
+    return {
+        "id": settings.addon_id,
+        "version": settings.addon_version,
+        "name": settings.addon_name,
+        "description": "Open-source torrent search + debrid resolution service.",
+        "types": ["movie", "series"],
+        "catalogs": [],
+        "resources": ["stream"],
+        "background": f"{settings.addon_url}/static/cauldron.png",
+        "logo": f"{settings.addon_url}/static/cauldron.png"
+    }
+
+
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -98,6 +134,9 @@ async def update_settings(request: Request):
         "allow_cam":
             "allow_cam" in form,
 
+        "allow_season_packs":
+            "allow_season_packs" in form,
+
         "min_seeders":
             int(form.get(
                 "min_seeders",
@@ -108,7 +147,13 @@ async def update_settings(request: Request):
             float(form.get(
                 "seeder_weight",
                 1
-            ))
+            )),
+
+        "sort_criteria":
+            form.getlist("sort_criteria") or form.get("sort_criteria", "seeders,resolution,quality").split(","),
+
+        "sort_order":
+            form.get("sort_order", "desc")
     }
 
 
@@ -256,6 +301,9 @@ async def generate_manifest(request: Request):
         "allow_cam":
             "allow_cam" in form,
 
+        "allow_season_packs":
+            "allow_season_packs" in form,
+
         "seeder_weight":
             float(form.get("seeder_weight", 1) or 1),
 
@@ -272,7 +320,13 @@ async def generate_manifest(request: Request):
             int(form.get("max_per_resolution", 0) or 0),
 
         "max_size_gb":
-            float(form.get("max_size_gb", 0) or 0)
+            float(form.get("max_size_gb", 0) or 0),
+
+        "sort_criteria":
+            form.getlist("sort_criteria") or form.get("sort_criteria", "seeders,resolution,quality").split(","),
+
+        "sort_order":
+            form.get("sort_order", "desc")
 
     }
 

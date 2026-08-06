@@ -68,25 +68,44 @@ class TorBoxClient(DebridClient):
     async def get_playback_link(
         self, torrent_id: str, file_index: Optional[int] = None
     ) -> ResolveResponse:
-        files = await self.list_files(torrent_id)
-        if not files:
-            raise RuntimeError("Torrent not yet ready on TorBox (still downloading?)")
+        # First try to get files - if it's already added
+        try:
+            files = await self.list_files(torrent_id)
+            if files:
+                idx = file_index if file_index is not None and file_index < len(files) else 0
+                chosen = files[idx]
 
-        idx = file_index if file_index is not None and file_index < len(files) else 0
-        chosen = files[idx]
+                url = f"{self._base}/torrents/requestdl"
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.get(
+                        url,
+                        headers=self._headers,
+                        params={"token": self.api_key, "torrent_id": torrent_id, "file_id": chosen["id"]},
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
 
+                return ResolveResponse(
+                    playback_url=data["data"],
+                    file_name=chosen.get("name") or chosen.get("short_name"),
+                    provider="torbox",
+                )
+        except Exception as e:
+            print(f"Error getting existing files: {e}, trying direct request", flush=True)
+        
+        # If torrent not in user list or error, request download and get playback link
         url = f"{self._base}/torrents/requestdl"
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
                 url,
                 headers=self._headers,
-                params={"token": self.api_key, "torrent_id": torrent_id, "file_id": chosen["id"]},
+                params={"token": self.api_key, "torrent_id": torrent_id},
             )
             resp.raise_for_status()
             data = resp.json()
 
         return ResolveResponse(
             playback_url=data["data"],
-            file_name=chosen.get("name") or chosen.get("short_name"),
+            file_name="stream",
             provider="torbox",
         )

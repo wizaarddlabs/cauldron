@@ -59,16 +59,20 @@ class PremiumizeClient(DebridClient):
     async def get_playback_link(
         self, torrent_id: str, file_index: Optional[int] = None
     ) -> ResolveResponse:
-        files = await self.list_files(torrent_id)
-        streamable = [f for f in files if f.get("type") == "file" and f.get("stream_link")]
-        if not streamable:
-            raise RuntimeError("No streamable files found for this item on Premiumize")
+        try:
+            files = await self.list_files(torrent_id)
+            streamable = [f for f in files if f.get("type") == "file" and f.get("stream_link")]
+            if not streamable:
+                raise RuntimeError("No streamable files found for this item on Premiumize")
 
-        idx = file_index if file_index is not None and file_index < len(streamable) else 0
-        chosen = streamable[idx]
+            idx = file_index if file_index is not None and file_index < len(streamable) else 0
+            chosen = streamable[idx]
 
-        return ResolveResponse(
-            playback_url=chosen["stream_link"],
-            file_name=chosen.get("name"),
-            provider="premiumize",
-        )
+            return ResolveResponse(
+                playback_url=chosen["stream_link"],
+                file_name=chosen.get("name"),
+                provider="premiumize",
+            )
+        except Exception as e:
+            print(f"Error getting Premiumize playback link: {e}, torrent may not be ready", flush=True)
+            raise

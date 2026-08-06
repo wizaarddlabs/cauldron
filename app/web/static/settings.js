@@ -85,7 +85,90 @@ document.addEventListener('DOMContentLoaded', function(){
       cb.style.height = 'auto';
     }
   });
+
+  // Initialize sortable list
+  initSortableList();
 });
+
+function initSortableList() {
+  const sortableList = document.getElementById('sortCriteria');
+  const sortInput = document.getElementById('sortCriteriaInput');
+  
+  if (!sortableList || !sortInput) {
+    console.log('Sortable list or input not found');
+    return;
+  }
+
+  console.log('Initializing sortable list');
+
+  // Initialize items from saved preferences
+  const savedCriteria = sortInput.value.split(',').filter(s => s.trim());
+  if (savedCriteria.length > 0 && savedCriteria[0]) {
+    const items = Array.from(sortableList.querySelectorAll('.sortable-item'));
+    const orderedItems = [];
+    
+    savedCriteria.forEach(value => {
+      const item = items.find(i => i.dataset.value === value);
+      if (item) orderedItems.push(item);
+    });
+    
+    // Add any remaining items that weren't in saved criteria
+    items.forEach(item => {
+      if (!orderedItems.includes(item)) orderedItems.push(item);
+    });
+    
+    orderedItems.forEach(item => sortableList.appendChild(item));
+  }
+
+  updateButtonStates();
+}
+
+function moveItem(button, direction) {
+  const item = button.closest('.sortable-item');
+  const sortableList = item.parentElement;
+  const items = Array.from(sortableList.querySelectorAll('.sortable-item'));
+  const currentIndex = items.indexOf(item);
+  
+  const newIndex = currentIndex + direction;
+  
+  if (newIndex >= 0 && newIndex < items.length) {
+    if (direction === -1) {
+      sortableList.insertBefore(item, items[newIndex]);
+    } else {
+      sortableList.insertBefore(items[newIndex], item);
+    }
+    
+    updateSortCriteria();
+    updateButtonStates();
+  }
+}
+
+function updateButtonStates() {
+  const sortableList = document.getElementById('sortCriteria');
+  if (!sortableList) return;
+  
+  const items = sortableList.querySelectorAll('.sortable-item');
+  
+  items.forEach((item, index) => {
+    const upBtn = item.querySelector('.sort-btn.up');
+    const downBtn = item.querySelector('.sort-btn.down');
+    
+    if (upBtn) upBtn.disabled = index === 0;
+    if (downBtn) downBtn.disabled = index === items.length - 1;
+  });
+}
+
+function updateSortCriteria() {
+  const sortableList = document.getElementById('sortCriteria');
+  const sortInput = document.getElementById('sortCriteriaInput');
+  
+  if (!sortableList || !sortInput) return;
+  
+  const items = sortableList.querySelectorAll('.sortable-item');
+  const criteria = Array.from(items).map(item => item.dataset.value);
+  sortInput.value = criteria.join(',');
+  console.log('Updated sort criteria:', criteria);
+}
 
 function addLanguageChip(text){
   const pills = document.querySelector('div.card h2 + .pills') || document.querySelector('.pills');

@@ -198,7 +198,6 @@ class RealDebridClient(DebridClient):
         file_index: Optional[int] = None
     ) -> ResolveResponse:
 
-
         async with httpx.AsyncClient(timeout=15) as client:
 
             info_resp = await client.get(
@@ -210,6 +209,14 @@ class RealDebridClient(DebridClient):
 
             info = info_resp.json()
 
+            # Check if torrent is ready to download
+            status = info.get("status", "")
+            if status not in ["downloaded", "waiting_files_selection"]:
+                # Torrent not ready yet, return error to indicate it needs time
+                raise RuntimeError(
+                    f"Torrent not ready on Real-Debrid (status: {status})"
+                )
+
             links = info.get(
                 "links",
                 []
@@ -218,7 +225,7 @@ class RealDebridClient(DebridClient):
 
             if not links:
                 raise RuntimeError(
-                    "Torrent not ready on Real-Debrid"
+                    "Torrent not ready on Real-Debrid - no links available"
                 )
 
 
