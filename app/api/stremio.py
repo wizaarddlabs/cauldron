@@ -59,6 +59,7 @@ def _decode_config(config):
 
 
     try:
+
         padded = config + "=" * (-len(config) % 4)
 
         raw = base64.urlsafe_b64decode(
@@ -66,6 +67,7 @@ def _decode_config(config):
         )
 
         return json.loads(raw)
+
 
     except (
         ValueError,
@@ -222,10 +224,10 @@ async def stream(
         }
 
 
-    # Apply user filters
-    pipeline = FilterPipeline(cfg)
-
-    torrents = pipeline.apply(
+    #
+    # Apply filters
+    #
+    torrents = FilterPipeline(cfg).apply(
         torrents
     )
 
@@ -243,7 +245,9 @@ async def stream(
     )
 
 
-    # Check TorBox/RD cache status
+    #
+    # Check cache
+    #
     status_map = await client.check_cache(
         [
             t.info_hash
@@ -252,15 +256,11 @@ async def stream(
     )
 
 
-    cached_only = _parse_bool(
-        cfg.get("cached_only")
-    )
-
-
     output = []
 
 
     for t in torrents:
+
 
         cached = (
             status_map.get(t.info_hash)
@@ -268,13 +268,34 @@ async def stream(
         )
 
 
-        # Skip uncached torrents
-        if cached_only and not cached:
+        #
+        # IMPORTANT:
+        # Never expose uncached torrents
+        #
+        if not cached:
             continue
 
 
-        # Only expose cached debrid streams
-        if cached:
+        magnet = (
+            t.magnet
+            if getattr(t, "magnet", None)
+            else
+            f"magnet:?xt=urn:btih:{t.info_hash}"
+        )
+
+
+        try:
+
+            torrent_id = await client.add_magnet(
+                magnet
+            )
+
+
+            playback = await client.get_playback_link(
+                torrent_id,
+                None
+            )
+
 
             output.append(
                 {
@@ -284,13 +305,11 @@ async def stream(
                     "title":
                         t.title,
 
-                    "infoHash":
-                        t.info_hash,
+                    "url":
+                        playback.playback_url,
 
-                    "sources":
-                        [
-                            f"tracker:{t.info_hash}"
-                        ],
+                    "stream_url":
+                        playback.playback_url,
 
                     "behaviorHints":
                         {
@@ -301,25 +320,11 @@ async def stream(
             )
 
 
-        # Optional raw torrent results
-        elif not cached_only:
+        except Exception as e:
 
-            output.append(
-                {
-                    "name":
-                        "🧙 Cauldron Torrent",
-
-                    "title":
-                        t.title,
-
-                    "infoHash":
-                        t.info_hash,
-
-                    "sources":
-                        [
-                            f"tracker:{t.info_hash}"
-                        ]
-                }
+            print(
+                f"Playback failed: {t.title}: {e}",
+                flush=True
             )
 
 
