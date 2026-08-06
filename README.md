@@ -15,7 +15,7 @@ Stremio / your app
   FastAPI service  ──────►  Jackett (your own instance)  ──► indexers YOU configure
         │
         ▼
-  Debrid provider (Real-Debrid / Premiumize / TorBox)
+  Debrid provider (Real-Debrid / AllDebrid / Premiumize / TorBox)
         │
         ▼
   Direct playback link
@@ -26,10 +26,10 @@ run yourself and configure with whatever indexers you choose in its web UI.
 This keeps the source-discovery layer pluggable and under your control —
 the same architecture Comet and MediaFusion use.
 Supported debrid providers
-Real-Debrid
-AllDebrid
-Premiumize
-TorBox
+- Real-Debrid
+- AllDebrid
+- Premiumize
+- TorBox
 Adding another provider = implement `app/debrid/base.py`'s `DebridClient`
 interface and register it in `app/debrid/factory.py`.
 Quick start (Docker)
@@ -48,7 +48,17 @@ Installing as a Stremio addon
 Generate your personal config segment (embeds your debrid provider + key,
 never stored server-side):
 ```bash
+# For Real-Debrid
 python scripts/make_config.py realdebrid YOUR_RD_API_KEY
+
+# For AllDebrid
+python scripts/make_config.py alldebrid YOUR_AD_API_KEY
+
+# For Premiumize
+python scripts/make_config.py premiumize YOUR_PM_API_KEY
+
+# For TorBox
+python scripts/make_config.py torbox YOUR_TB_API_KEY
 ```
 This prints an install URL like:
 ```
@@ -61,12 +71,12 @@ REST API
 curl "http://localhost:8000/api/search?q=your+query"
 
 # Check which results are instantly cached on your debrid account
-curl "http://localhost:8000/api/availability?q=your+query&provider=realdebrid&api_key=YOUR_KEY"
+curl "http://localhost:8000/api/availability?q=your+query&provider=alldebrid&api_key=YOUR_KEY"
 
 # Resolve a magnet to a direct playback link
 curl -X POST http://localhost:8000/api/resolve \
   -H "Content-Type: application/json" \
-  -d '{"provider":"realdebrid","api_key":"YOUR_KEY","magnet":"magnet:?xt=urn:btih:..."}'
+  -d '{"provider":"alldebrid","api_key":"YOUR_KEY","magnet":"magnet:?xt=urn:btih:..."}'
 ```
 Full interactive docs at `http://localhost:8000/docs` (FastAPI's built-in
 Swagger UI).
