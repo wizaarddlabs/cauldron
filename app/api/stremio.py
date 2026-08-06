@@ -9,6 +9,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request
 
 from app.filtering.pipeline import FilterPipeline
+from app.filtering.sorting import sort_torrents
 from app.config import get_settings
 from app.config_store import load_config
 from app.debrid.factory import get_debrid_client
@@ -57,7 +58,6 @@ def _decode_config(config):
     except Exception:
         pass
 
-
     try:
 
         padded = config + "=" * (-len(config) % 4)
@@ -67,7 +67,6 @@ def _decode_config(config):
         )
 
         return json.loads(raw)
-
 
     except (
         ValueError,
@@ -79,23 +78,6 @@ def _decode_config(config):
             400,
             "Invalid config"
         )
-
-
-def _parse_bool(value):
-
-    if isinstance(value, bool):
-        return value
-
-    if value is None:
-        return False
-
-    return str(value).lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-        "checked"
-    }
 
 
 def normalize_debrid(cfg):
@@ -177,9 +159,7 @@ async def manifest_configured(
     )
 
 
-@router.get(
-    "/{config}/stream/{type}/{id}.json"
-)
+@router.get("/{config}/stream/{type}/{id}.json")
 async def stream(
     config: str,
     type: str,
@@ -220,7 +200,7 @@ async def stream(
     if not torrents:
 
         return {
-            "streams":[]
+            "streams": []
         }
 
 
@@ -232,10 +212,18 @@ async def stream(
     )
 
 
+    #
+    # Sort quality
+    #
+    torrents = sort_torrents(
+        torrents
+    )
+
+
     if not torrents:
 
         return {
-            "streams":[]
+            "streams": []
         }
 
 
@@ -246,7 +234,7 @@ async def stream(
 
 
     #
-    # Check cache
+    # Check cached status
     #
     status_map = await client.check_cache(
         [
@@ -261,7 +249,6 @@ async def stream(
 
     for t in torrents:
 
-
         cached = (
             status_map.get(t.info_hash)
             == CacheStatus.CACHED
@@ -269,8 +256,7 @@ async def stream(
 
 
         #
-        # IMPORTANT:
-        # Never expose uncached torrents
+        # Never show uncached torrents
         #
         if not cached:
             continue
