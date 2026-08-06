@@ -5,355 +5,249 @@
 
 <title>Cauldron Wizard</title>
 
-<link rel="stylesheet" href="/static/style.css">
-
-<style>
-
-.logo {
-    width:150px;
-    display:block;
-    margin:auto;
-}
-
-
-.card {
-
-    background:#1e1e1e;
-    padding:25px;
-    border-radius:20px;
-    margin-bottom:20px;
-
-}
-
-
-.pills {
-
-    display:flex;
-    flex-wrap:wrap;
-    gap:10px;
-
-}
-
-
-.pill input {
-
-    display:none;
-
-}
-
-
-.pill label {
-
-    display:block;
-    padding:10px 18px;
-    border-radius:25px;
-    background:#333;
-    cursor:pointer;
-    transition:.2s;
-
-}
-
-
-.pill input:checked + label {
-
-    background:#ffd700;
-    color:#111;
-    font-weight:bold;
-
-}
-
-
-
-input[type=text],
-input[type=password] {
-
-    width:100%;
-    padding:12px;
-    border-radius:12px;
-    background:#333;
-    border:0;
-    color:white;
-    margin-bottom:12px;
-
-}
-
-
-button {
-
-    width:100%;
-    padding:15px;
-    border-radius:20px;
-    border:0;
-    background:#ffd700;
-    font-size:18px;
-    font-weight:bold;
-    cursor:pointer;
-
-}
-
-
-.copy {
-
-    background:#333;
-    color:#ffd700;
-    margin-top:10px;
-
-}
-
-
-.manifest-box {
-
-    background:#111;
-    padding:15px;
-    border-radius:12px;
-    word-break:break-all;
-    color:#ffd700;
-
-}
-
-
-</style>
+<link rel="stylesheet" href="/static/style.css?v=3">
 
 </head>
 
-
 <body>
-
 
 <div class="cauldron">
 
-
 <img class="logo" src="/static/cauldron.png">
 
-
-<h1>
-🧙 Cauldron
-</h1>
+<h1>🧙 Cauldron</h1>
+<p class="subtitle">Create your Stremio manifest with filtered debrid streams</p>
 
 
 {% if manifest %}
 
 <div class="card">
-
-<h2>⚡ Your Cauldron Manifest</h2>
-
-<p>
-Copy this URL into Stremio:
-</p>
-
-<div class="manifest-box" id="manifestUrl">
-{{ manifest }}
-</div>
-
-<button type="button" class="copy" onclick="copyManifest()">
-📋 Copy Manifest URL
-</button>
-
+  <h3 style="margin-top:12px">⚡ Your Cauldron Manifest</h3>
+  <p class="small">Copy this URL into Stremio:</p>
+  <div class="manifest-box" id="manifestUrl">{{ manifest }}</div>
+  <button type="button" class="primary" onclick="copyManifest()">📋 Copy Manifest URL</button>
 </div>
 
 {% endif %}
-
-
 
 <form method="post" action="/generate">
 
+  <div class="card">
+    <h2>Debrid</h2>
+    <div class="stacked-row">
+      <div>
+        <label>TorBox API Key</label>
+        <input type="password" name="torbox_key" value="{{ prefs.torbox_key or '' }}">
+      </div>
+      <div>
+        <label>Real-Debrid API Key</label>
+        <input type="password" name="realdebrid_key" value="{{ prefs.realdebrid_key or '' }}">
+      </div>
+    </div>
+    <label style="margin-top:10px">Premiumize API Key</label>
+    <input type="password" name="premiumize_key" value="{{ prefs.premiumize_key or '' }}">
+  </div>
 
-<div class="card">
+  <div class="card">
+    <h2>Debrid Services</h2>
+    <div class="muted small">Manage how debrid services are used</div>
+    <div class="checkbox-row" style="margin-top:10px">
+      <label><input type="checkbox" name="dedupe_streams" {% if prefs.dedupe_streams %}checked{% endif %}> Deduplicate Streams</label>
+      <label><input type="checkbox" name="scrape_debrid" {% if prefs.scrape_debrid %}checked{% endif %}> Scrape Debrid Account Torrents</label>
+    </div>
+    <p class="muted small" style="margin-top:8px">Deduplicate keeps the first occurrence of a torrent across providers. Scrape debrid will include your account library when available.</p>
+  </div>
 
-<h2>Debrid</h2>
+  <div class="card">
+    <h2>Resolution</h2>
+    <div class="pills">
+      <div class="pill"><input id="2160" type="checkbox" name="resolution" value="2160p" {% if '2160p' in prefs.resolution %}checked{% endif %}><label for="2160">2160p</label></div>
+      <div class="pill"><input id="1440" type="checkbox" name="resolution" value="1440p" {% if '1440p' in prefs.resolution %}checked{% endif %}><label for="1440">1440p</label></div>
+      <div class="pill"><input id="1080" type="checkbox" name="resolution" value="1080p" {% if '1080p' in prefs.resolution %}checked{% endif %}><label for="1080">1080p</label></div>
+      <div class="pill"><input id="720" type="checkbox" name="resolution" value="720p" {% if '720p' in prefs.resolution %}checked{% endif %}><label for="720">720p</label></div>
+      <div class="pill"><input id="576" type="checkbox" name="resolution" value="576p" {% if '576p' in prefs.resolution %}checked{% endif %}><label for="576">576p</label></div>
+      <div class="pill"><input id="480" type="checkbox" name="resolution" value="480p" {% if '480p' in prefs.resolution %}checked{% endif %}><label for="480">480p</label></div>
+      <div class="pill"><input id="360" type="checkbox" name="resolution" value="360p" {% if '360p' in prefs.resolution %}checked{% endif %}><label for="360">360p</label></div>
+      <div class="pill"><input id="240" type="checkbox" name="resolution" value="240p" {% if '240p' in prefs.resolution %}checked{% endif %}><label for="240">240p</label></div>
+      <div class="pill"><input id="unknown" type="checkbox" name="resolution" value="unknown" {% if 'unknown' in prefs.resolution %}checked{% endif %}><label for="unknown">Unknown</label></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="stacked-row">
+        <div>
+          <label>Max Results Per Resolution</label>
+          <input type="number" name="max_per_resolution" min="0" value="{{ prefs.max_per_resolution or 0 }}">
+        </div>
+        <div>
+          <label>Max Size (GB)</label>
+          <input type="number" name="max_size_gb" min="0" value="{{ prefs.max_size_gb or 0 }}">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Quality</h2>
+    <div class="pills">
+      <div class="pill"><input id="prefer_4k" type="checkbox" name="prefer_4k" value="1" {% if prefs.prefer_4k %}checked{% endif %}><label for="prefer_4k">Prefer 4K</label></div>
+      <div class="pill"><input id="prefer_hdr" type="checkbox" name="prefer_hdr" value="1" {% if prefs.prefer_hdr %}checked{% endif %}><label for="prefer_hdr">HDR</label></div>
+      <div class="pill"><input id="prefer_dv" type="checkbox" name="prefer_dolby_vision" value="1" {% if prefs.prefer_dolby_vision %}checked{% endif %}><label for="prefer_dv">Dolby Vision</label></div>
+      <div class="pill"><input id="prefer_remux" type="checkbox" name="prefer_remux" value="1" {% if prefs.prefer_remux %}checked{% endif %}><label for="prefer_remux">Remux</label></div>
+      <div class="pill"><input id="prefer_hevc" type="checkbox" name="prefer_hevc" value="1" {% if prefs.prefer_hevc %}checked{% endif %}><label for="prefer_hevc">HEVC</label></div>
+      <div class="pill"><input id="prefer_atmos" type="checkbox" name="prefer_atmos" value="1"><label for="prefer_atmos">Atmos</label></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Languages</h2>
+    <div class="muted small">Select the languages you require, prefer, or want excluded.</div>
+
+    <div class="checkbox-row" style="margin-top:12px">
+      <label><input type="checkbox" name="multi_language" value="1" {% if prefs.multi_language %}checked{% endif %}>Multi language</label>
+    </div>
+
+    {% set language_options = [
+      {'value':'arabic','label':'Arabic'},
+      {'value':'bulgarian','label':'Bulgarian'},
+      {'value':'bengali','label':'Bengali'},
+      {'value':'czech','label':'Czech'},
+      {'value':'danish','label':'Danish'},
+      {'value':'german','label':'German'},
+      {'value':'greek','label':'Greek'},
+      {'value':'english','label':'English'},
+      {'value':'spanish','label':'Spanish'},
+      {'value':'estonian','label':'Estonian'},
+      {'value':'persian','label':'Persian'},
+      {'value':'finnish','label':'Finnish'},
+      {'value':'french','label':'French'},
+      {'value':'gujarati','label':'Gujarati'},
+      {'value':'hebrew','label':'Hebrew'},
+      {'value':'hindi','label':'Hindi'},
+      {'value':'croatian','label':'Croatian'},
+      {'value':'hungarian','label':'Hungarian'},
+      {'value':'indonesian','label':'Indonesian'},
+      {'value':'italian','label':'Italian'},
+      {'value':'japanese','label':'Japanese'},
+      {'value':'kannada','label':'Kannada'},
+      {'value':'korean','label':'Korean'},
+      {'value':'latino','label':'Latino'},
+      {'value':'lithuanian','label':'Lithuanian'},
+      {'value':'latvian','label':'Latvian'},
+      {'value':'malayalam','label':'Malayalam'},
+      {'value':'marathi','label':'Marathi'},
+      {'value':'malay','label':'Malay'},
+      {'value':'multi','label':'Multi'},
+      {'value':'dutch','label':'Dutch'},
+      {'value':'norwegian','label':'Norwegian'},
+      {'value':'punjabi','label':'Punjabi'},
+      {'value':'polish','label':'Polish'},
+      {'value':'portuguese','label':'Portuguese'},
+      {'value':'romanian','label':'Romanian'},
+      {'value':'russian','label':'Russian'},
+      {'value':'slovak','label':'Slovak'},
+      {'value':'slovenian','label':'Slovenian'},
+      {'value':'serbian','label':'Serbian'},
+      {'value':'swedish','label':'Swedish'},
+      {'value':'tamil','label':'Tamil'},
+      {'value':'telugu','label':'Telugu'},
+      {'value':'thai','label':'Thai'},
+      {'value':'turkish','label':'Turkish'},
+      {'value':'ukrainian','label':'Ukrainian'},
+      {'value':'vietnamese','label':'Vietnamese'},
+      {'value':'chinese','label':'Chinese'},
+    ] %}
+
+    <div class="language-dropdown">
+      <label>Required Languages</label>
+      <details class="dropdown" data-dropdown="required">
+        <summary class="dropdown-toggle">Select required languages</summary>
+        <div class="dropdown-menu">
+          {% for option in language_options %}
+            <label class="dropdown-option"><input type="checkbox" name="required_languages" value="{{ option.value }}" {% if option.value in prefs.required_languages %}checked{% endif %}>{{ option.label }}</label>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+
+    <div class="language-dropdown" style="margin-top:18px">
+      <label>Preferred Languages</label>
+      <details class="dropdown" data-dropdown="preferred">
+        <summary class="dropdown-toggle">Select preferred languages</summary>
+        <div class="dropdown-menu">
+          {% for option in language_options %}
+            <label class="dropdown-option"><input type="checkbox" name="preferred_languages" value="{{ option.value }}" {% if option.value in prefs.preferred_languages %}checked{% endif %}>{{ option.label }}</label>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+
+    <div class="language-dropdown" style="margin-top:18px">
+      <label>Excluded Languages</label>
+      <details class="dropdown" data-dropdown="excluded">
+        <summary class="dropdown-toggle">Select excluded languages</summary>
+        <div class="dropdown-menu">
+          {% for option in language_options %}
+            <label class="dropdown-option"><input type="checkbox" name="excluded_languages" value="{{ option.value }}" {% if option.value in prefs.excluded_languages %}checked{% endif %}>{{ option.label }}</label>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Codec</h2>
+    <div class="pills">
+      <div class="pill"><input id="codec_hevc" type="checkbox" name="codec" value="hevc" {% if prefs.codec == 'hevc' or prefs.prefer_hevc %}checked{% endif %}><label for="codec_hevc">HEVC / x265</label></div>
+      <div class="pill"><input id="codec_x264" type="checkbox" name="codec" value="h264" {% if prefs.codec == 'h264' %}checked{% endif %}><label for="codec_x264">H.264 / x264</label></div>
+      <div class="pill"><input id="codec_av1" type="checkbox" name="codec" value="av1" {% if prefs.codec == 'av1' %}checked{% endif %}><label for="codec_av1">AV1</label></div>
+      <div class="pill"><input id="codec_remux" type="checkbox" name="codec" value="remux" {% if prefs.codec == 'remux' %}checked{% endif %}><label for="codec_remux">Remux</label></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Options</h2>
+    <div class="pills">
+      <div class="pill"><input id="cached" type="checkbox" name="cached_only" {% if prefs.cached_only %}checked{% endif %}><label for="cached">Cached Only</label></div>
+      <div class="pill"><input id="allow_cam" type="checkbox" name="allow_cam" value="1" {% if prefs.allow_cam %}checked{% endif %}><label for="allow_cam">Allow CAM/Low Quality</label></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Advanced Filters</h2>
+    <div class="stacked-row">
+      <div>
+        <label>Minimum Seeders</label>
+        <input type="number" name="min_seeders" min="0" value="{{ prefs.min_seeders }}">
+      </div>
+
+      <div>
+        <label>Seeder weight (multiplier)</label>
+        <input type="number" name="seeder_weight" min="0" step="0.1" value="{{ prefs.seeder_weight }}">
+      </div>
+
+      <div>
+        <label>Custom patterns (one per line)</label>
+        <textarea name="custom_patterns" rows="3">{{ prefs.custom_patterns or '' }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <button class="primary">🧙 Create Cauldron Manifest</button>
+
+  <div style="margin-top:18px; text-align:center; font-size:13px; color:#9aa0a6;">
+    <div>Support the project:</div>
+    <a href="https://github.com/wizaarddlabs/cauldron" target="_blank" rel="noopener noreferrer" style="color:#ffd700; text-decoration:none;">GitHub</a>
+    &nbsp;|&nbsp;
+    <a href="https://ko-fi.com/wizaardd" target="_blank" rel="noopener noreferrer" style="color:#ffd700; text-decoration:none;">Ko-fi</a>
+  </div>
+
+</form>
 
 
-<label>TorBox API Key</label>
-<input type="password" name="torbox_key">
-
-
-<label>Real-Debrid API Key</label>
-<input type="password" name="realdebrid_key">
-
-
-<label>Premiumize API Key</label>
-<input type="password" name="premiumize_key">
-
+<script src="/static/settings.js?v=3"></script>
 
 </div>
 
+</body>
 
-
-
-
-
-
-
-
-<div class="card">
-
-
-<h2>Resolution</h2>
-
-
-<div class="pills">
-
-
-<div class="pill">
-<input id="4k" type="checkbox" name="resolution" value="2160p">
-<label for="4k">4K</label>
-</div>
-
-
-<div class="pill">
-<input id="1080" type="checkbox" name="resolution" value="1080p">
-<label for="1080">1080p</label>
-</div>
-
-
-<div class="pill">
-<input id="720" type="checkbox" name="resolution" value="720p">
-<label for="720">720p</label>
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-<div class="card">
-
-
-<h2>Language</h2>
-
-
-<div class="pills">
-
-
-<div class="pill">
-<input id="eng" type="checkbox" name="language" value="english">
-<label for="eng">English</label>
-</div>
-
-
-<div class="pill">
-<input id="spa" type="checkbox" name="language" value="spanish">
-<label for="spa">Spanish</label>
-</div>
-
-
-<div class="pill">
-<input id="ger" type="checkbox" name="language" value="german">
-<label for="ger">German</label>
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-<div class="card">
-
-
-<h2>Quality</h2>
-
-
-<div class="pills">
-
-
-<div class="pill">
-<input id="hdr" type="checkbox" name="filters" value="hdr">
-<label for="hdr">HDR</label>
-</div>
-
-
-<div class="pill">
-<input id="dv" type="checkbox" name="filters" value="dolby">
-<label for="dv">Dolby Vision</label>
-</div>
-
-
-<div class="pill">
-<input id="remux" type="checkbox" name="filters" value="remux">
-<label for="remux">Remux</label>
-</div>
-
-
-<div class="pill">
-<input id="hevc" type="checkbox" name="filters" value="hevc">
-<label for="hevc">HEVC</label>
-</div>
-
-
-<div class="pill">
-<input id="atmos" type="checkbox" name="filters" value="atmos">
-<label for="atmos">Atmos</label>
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-<div class="card">
-
-
-<h2>Options</h2>
-
-
-<div class="pills">
-
-
-<div class="pill">
-<input id="cached" type="checkbox" name="cached_only">
-<label for="cached">Cached Only</label>
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-<button>
-
-🧙 Create Cauldron Manifest
-
-</button>
-
-
-{% if manifest %}
-
-<div class="card">
-
-<h2>🧙 Your Cauldron Manifest</h2>
-
-<input
-type="text"
-value="{{ manifest }}"
-readonly
-onclick="this.select()"
->
-
-<p>
-Copy this URL into Stremio.
-</p>
-
-</div>
-
-{% endif %}
+</html>

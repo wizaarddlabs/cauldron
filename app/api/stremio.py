@@ -6,12 +6,13 @@ import base64
 import binascii
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from app.filtering.pipeline import FilterPipeline
 from app.config import get_settings
 from app.config_store import load_config
 from app.debrid.factory import get_debrid_client
-from app.models import CacheStatus, DebridProvider
+from app.models import CacheStatus, DebridProvider, TorrentResult
 from app.scrapers.aggregator import search_all
 
 
@@ -20,13 +21,14 @@ router = APIRouter(tags=["stremio"])
 settings = get_settings()
 
 
-def _manifest():
+def _manifest(base_url: str):
 
     return {
         "id": settings.addon_id,
         "version": settings.addon_version,
         "name": settings.addon_name,
         "description": "Cauldron torrent + debrid addon",
+        "logo": f"{base_url.rstrip('/')}/static/cauldron.png",
         "resources": [
             "stream"
         ],
@@ -37,7 +39,52 @@ def _manifest():
         "idPrefixes": [
             "tt"
         ],
-        "catalogs": []
+        "catalogs": [],
+        "behaviorHints": {
+            "configurable": True
+        },
+        "config": [
+            {
+                "key": "provider",
+                "type": "select",
+                "title": "Debrid Provider",
+                "options": [
+                    "torbox",
+                    "realdebrid",
+                    "premiumize"
+                ]
+            },
+            {
+                "key": "torbox_key",
+                "type": "password",
+                "title": "TorBox API Key"
+            },
+            {
+                "key": "realdebrid_key",
+                "type": "password",
+                "title": "Real-Debrid API Key"
+            },
+            {
+                "key": "premiumize_key",
+                "type": "password",
+                "title": "Premiumize API Key"
+            },
+            {
+                "key": "addon_name",
+                "type": "text",
+                "title": "Addon Name"
+            },
+            {
+                "key": "cached_only",
+                "type": "checkbox",
+                "title": "Cached Only"
+            },
+            {
+                "key": "scrape_debrid",
+                "type": "checkbox",
+                "title": "Scrape Debrid Account Torrents"
+            }
+        ]
     }
 
 
@@ -77,6 +124,28 @@ def _decode_config(config):
             "Invalid config"
         )
 
+
+
+def _parse_bool(value):
+
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return False
+
+    if isinstance(value, (int, float)):
+        return bool(value)
+
+    return str(value).lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "checked",
+        "y",
+        "t"
+    }
 
 
 def normalize_debrid(cfg):
@@ -125,17 +194,39 @@ def normalize_debrid(cfg):
 
 
 @router.get("/manifest.json")
-async def manifest():
+async def manifest(request: Request):
 
-    return _manifest()
+    host = request.headers.get(
+        "host",
+        "localhost:8000"
+    )
 
+    scheme = request.headers.get(
+        "x-forwarded-proto",
+        "http"
+    )
+
+    base_url = f"{scheme}://{host}"
+
+    return _manifest(base_url)
 
 
 @router.get("/{config}/manifest.json")
-async def manifest_configured(config:str):
+async def manifest_configured(request: Request, config:str):
 
-    return _manifest()
+    host = request.headers.get(
+        "host",
+        "localhost:8000"
+    )
 
+    scheme = request.headers.get(
+        "x-forwarded-proto",
+        "http"
+    )
+
+    base_url = f"{scheme}://{host}"
+
+    return _manifest(base_url)
 
 
 @router.get(
@@ -175,6 +266,53 @@ async def stream(
         imdb_id=imdb_id
     )
 
+    # Optionally include torrents from the user's debrid account
+    if cfg.get("scrape_debrid"):
+
+        try:
+            client = get_debrid_client(provider, api_key)
+            user_items = await client.list_user_torrents()
+            user_torrents: list[TorrentResult] = []
+
+            for item in user_items:
+
+                h = item.get('hash') or item.get('info_hash') or item.get('id')
+
+                if not h:
+                    continue
+
+                title = item.get('filename') or item.get('name') or f"Debrid {h[:8]}"
+
+                magnet = item.get('magnet') or ''
+
+                size = item.get('size') or item.get('size_bytes') or item.get('filesize')
+
+                try:
+                    size_bytes = int(size) if size else None
+                except Exception:
+                    size_bytes = None
+
+                user_torrents.append(
+                    TorrentResult(
+                        title=title,
+                        info_hash=h,
+                        magnet=magnet,
+                        size_bytes=size_bytes,
+                        seeders=None,
+                        source='debrid-account'
+                    )
+                )
+
+            # Prepend user torrents so they are considered first
+            torrents = user_torrents + torrents
+
+        except Exception:
+            # best-effort — ignore failures to list account torrents
+            pass
+
+    # Apply filtering pipeline using UI config
+    pipeline = FilterPipeline(cfg)
+    torrents = pipeline.apply(torrents)
 
     if not torrents:
 
@@ -196,38 +334,88 @@ async def stream(
         ]
     )
 
+    cached_only = _parse_bool(
+        cfg.get("cached_only")
+    )
 
-    output=[]
+    async def _build_cached_debrid_streams():
+        streams = []
 
+        for t in torrents:
+            if status_map.get(t.info_hash) != CacheStatus.CACHED:
+                continue
 
-    for t in torrents:
+            magnet = (
+                t.magnet
+                if t.magnet
+                else f"magnet:?xt=urn:btih:{t.info_hash}"
+            )
 
-        cached = (
-            status_map.get(t.info_hash)
-            ==
-            CacheStatus.CACHED
-        )
+            try:
+                torrent_id = await client.add_magnet(magnet)
+                playback = await client.get_playback_link(
+                    torrent_id,
+                    None,
+                )
 
+            except Exception:
+                continue
 
-        output.append(
-            {
-                "name":
-                    f"🧙 Cauldron {'⚡ Cached' if cached else ''}",
+            streams.append(
+                {
+                    "name":
+                        f"🧙 Cauldron {provider.value.capitalize()} Cached",
 
-                "title":
-                    t.title,
+                    "title":
+                        t.title,
 
-                "infoHash":
-                    t.info_hash,
+                    "infoHash":
+                        t.info_hash,
 
-                "sources":
-                    [
-                        f"tracker:{t.info_hash}"
-                    ]
-            }
-        )
+                    "stream_url":
+                        playback.playback_url,
 
+                    "url":
+                        playback.playback_url,
+
+                    "sources":
+                        [
+                            f"tracker:{t.info_hash}"
+                        ],
+
+                    "provider":
+                        str(playback.provider)
+                }
+            )
+
+        return streams
+
+    output = []
+
+    if not cached_only:
+        for t in torrents:
+            output.append(
+                {
+                    "name":
+                        f"🧙 Cauldron {'⚡ Cached' if status_map.get(t.info_hash) == CacheStatus.CACHED else ''}",
+
+                    "title":
+                        t.title,
+
+                    "infoHash":
+                        t.info_hash,
+
+                    "sources":
+                        [
+                            f"tracker:{t.info_hash}"
+                        ]
+                }
+            )
+
+    output.extend(
+        await _build_cached_debrid_streams()
+    )
 
     return {
-        "streams":output
+        "streams": output
     }

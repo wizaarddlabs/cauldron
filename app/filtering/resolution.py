@@ -55,3 +55,21 @@ def matches_resolution(
 
 
     return False
+
+
+def detect_resolution(title: str) -> str | None:
+    """
+    Detects and returns the resolution string (e.g. "2160p") found
+    in `title`, or `None` if none matched.
+    """
+
+    title_lower = title.lower()
+
+    for resolution, patterns in RESOLUTION_PATTERNS.items():
+
+        for pattern in patterns:
+
+            if re.search(pattern, title_lower):
+                return resolution
+
+    return None

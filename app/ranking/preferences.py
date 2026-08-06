@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 import json
 
@@ -17,6 +17,14 @@ class RankingPreferences:
     resolution: str = "any"
 
     language: str = "english"
+
+    required_languages: list[str] = field(default_factory=list)
+
+    preferred_languages: list[str] = field(default_factory=list)
+
+    excluded_languages: list[str] = field(default_factory=list)
+
+    multi_language: bool = False
 
     audio: str = "any"
 

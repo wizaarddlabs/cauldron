@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     addon_id: str = "community.cauldron"
     addon_name: str = "Cauldron"
     addon_version: str = "0.1.0"
+    addon_url: str = "http://localhost:8000"
 
     # --- Jackett (self-hosted torrent indexer aggregator) ---
     # Point this at your own Jackett instance. Jackett handles talking to
