@@ -15,6 +15,7 @@ from app.config_store import load_config
 from app.debrid.factory import get_debrid_client
 from app.models import CacheStatus, DebridProvider
 from app.scrapers.aggregator import search_all
+from app.ranking.stream_titles import build_stream_name
 
 
 router = APIRouter(tags=["stremio"])
@@ -30,26 +31,33 @@ def _manifest(base_url: str):
         "name": settings.addon_name,
         "description": "Cauldron torrent + debrid addon",
         "logo": f"{base_url.rstrip('/')}/static/cauldron.png",
+
         "resources": [
             "stream"
         ],
+
         "types": [
             "movie",
             "series"
         ],
+
         "idPrefixes": [
             "tt"
         ],
+
         "catalogs": [],
+
         "behaviorHints": {
             "configurable": True
         }
     }
 
 
+
 def _decode_config(config):
 
     try:
+
         stored = load_config(config)
 
         if stored:
@@ -57,6 +65,7 @@ def _decode_config(config):
 
     except Exception:
         pass
+
 
     try:
 
@@ -68,6 +77,7 @@ def _decode_config(config):
 
         return json.loads(raw)
 
+
     except (
         ValueError,
         binascii.Error,
@@ -78,6 +88,7 @@ def _decode_config(config):
             400,
             "Invalid config"
         )
+
 
 
 def normalize_debrid(cfg):
@@ -120,6 +131,7 @@ def normalize_debrid(cfg):
     )
 
 
+
 @router.get("/manifest.json")
 async def manifest(request: Request):
 
@@ -136,6 +148,7 @@ async def manifest(request: Request):
     return _manifest(
         f"{scheme}://{host}"
     )
+
 
 
 @router.get("/{config}/manifest.json")
@@ -157,6 +170,7 @@ async def manifest_configured(
     return _manifest(
         f"{scheme}://{host}"
     )
+
 
 
 @router.get("/{config}/stream/{type}/{id}.json")
@@ -204,17 +218,21 @@ async def stream(
         }
 
 
+
     #
-    # Apply filters
+    # Apply user filters
     #
+
     torrents = FilterPipeline(cfg).apply(
         torrents
     )
 
 
+
     #
-    # Sort quality
+    # Sort by quality/ranking
     #
+
     torrents = sort_torrents(
         torrents
     )
@@ -227,15 +245,18 @@ async def stream(
         }
 
 
+
     client = get_debrid_client(
         provider,
         api_key
     )
 
 
+
     #
-    # Check cached status
+    # Check instant cache
     #
+
     status_map = await client.check_cache(
         [
             t.info_hash
@@ -244,10 +265,13 @@ async def stream(
     )
 
 
+
     output = []
 
 
+
     for t in torrents:
+
 
         cached = (
             status_map.get(t.info_hash)
@@ -256,62 +280,49 @@ async def stream(
 
 
         #
-        # Never show uncached torrents
+        # Cauldron only shows instant streams
         #
+
         if not cached:
             continue
 
 
-        magnet = (
-            t.magnet
-            if getattr(t, "magnet", None)
-            else
-            f"magnet:?xt=urn:btih:{t.info_hash}"
+
+        output.append(
+            {
+
+                "name":
+                    build_stream_name(
+                        t.title
+                    ),
+
+
+                "title":
+                    t.title,
+
+
+                #
+                # Stremio compatible torrent metadata
+                #
+
+                "infoHash":
+                    t.info_hash,
+
+
+                "sources":
+                    [
+                        f"tracker:{t.info_hash}"
+                    ],
+
+
+                "behaviorHints":
+                    {
+                        "bingeGroup":
+                            "cauldron"
+                    }
+            }
         )
 
-
-        try:
-
-            torrent_id = await client.add_magnet(
-                magnet
-            )
-
-
-            playback = await client.get_playback_link(
-                torrent_id,
-                None
-            )
-
-
-            output.append(
-                {
-                    "name":
-                        f"🧙 Cauldron {provider.value.capitalize()} Cached",
-
-                    "title":
-                        t.title,
-
-                    "url":
-                        playback.playback_url,
-
-                    "stream_url":
-                        playback.playback_url,
-
-                    "behaviorHints":
-                        {
-                            "bingeGroup":
-                                "cauldron"
-                        }
-                }
-            )
-
-
-        except Exception as e:
-
-            print(
-                f"Playback failed: {t.title}: {e}",
-                flush=True
-            )
 
 
     return {

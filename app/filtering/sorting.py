@@ -7,7 +7,6 @@ def quality_score(title: str) -> int:
 
     score = 0
 
-
     # Resolution priority
     if re.search(r"\b(2160p|4k|uhd)\b", t):
         score += 5000
@@ -25,9 +24,7 @@ def quality_score(title: str) -> int:
         score += 1000
 
 
-
-    # Premium quality boosts
-
+    # Quality bonuses
     if "remux" in t:
         score += 500
 
