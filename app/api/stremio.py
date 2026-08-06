@@ -12,7 +12,7 @@ from app.filtering.pipeline import FilterPipeline
 from app.config import get_settings
 from app.config_store import load_config
 from app.debrid.factory import get_debrid_client
-from app.models import CacheStatus, DebridProvider, TorrentResult
+from app.models import CacheStatus, DebridProvider
 from app.scrapers.aggregator import search_all
 
 
@@ -42,57 +42,13 @@ def _manifest(base_url: str):
         "catalogs": [],
         "behaviorHints": {
             "configurable": True
-        },
-        "config": [
-            {
-                "key": "provider",
-                "type": "select",
-                "title": "Debrid Provider",
-                "options": [
-                    "torbox",
-                    "realdebrid",
-                    "premiumize"
-                ]
-            },
-            {
-                "key": "torbox_key",
-                "type": "password",
-                "title": "TorBox API Key"
-            },
-            {
-                "key": "realdebrid_key",
-                "type": "password",
-                "title": "Real-Debrid API Key"
-            },
-            {
-                "key": "premiumize_key",
-                "type": "password",
-                "title": "Premiumize API Key"
-            },
-            {
-                "key": "addon_name",
-                "type": "text",
-                "title": "Addon Name"
-            },
-            {
-                "key": "cached_only",
-                "type": "checkbox",
-                "title": "Cached Only"
-            },
-            {
-                "key": "scrape_debrid",
-                "type": "checkbox",
-                "title": "Scrape Debrid Account Torrents"
-            }
-        ]
+        }
     }
-
 
 
 def _decode_config(config):
 
     try:
-
         stored = load_config(config)
 
         if stored:
@@ -103,7 +59,6 @@ def _decode_config(config):
 
 
     try:
-
         padded = config + "=" * (-len(config) % 4)
 
         raw = base64.urlsafe_b64decode(
@@ -111,7 +66,6 @@ def _decode_config(config):
         )
 
         return json.loads(raw)
-
 
     except (
         ValueError,
@@ -125,7 +79,6 @@ def _decode_config(config):
         )
 
 
-
 def _parse_bool(value):
 
     if isinstance(value, bool):
@@ -134,39 +87,22 @@ def _parse_bool(value):
     if value is None:
         return False
 
-    if isinstance(value, (int, float)):
-        return bool(value)
-
     return str(value).lower() in {
         "1",
         "true",
         "yes",
         "on",
-        "checked",
-        "y",
-        "t"
+        "checked"
     }
 
 
 def normalize_debrid(cfg):
 
-    """
-    Converts Cauldron UI config
-    into internal provider/api_key format.
-    """
-
     if cfg.get("provider") and cfg.get("api_key"):
+
         return (
             cfg["provider"],
             cfg["api_key"]
-        )
-
-
-    if cfg.get("realdebrid_key"):
-
-        return (
-            "realdebrid",
-            cfg["realdebrid_key"]
         )
 
 
@@ -175,6 +111,14 @@ def normalize_debrid(cfg):
         return (
             "torbox",
             cfg["torbox_key"]
+        )
+
+
+    if cfg.get("realdebrid_key"):
+
+        return (
+            "realdebrid",
+            cfg["realdebrid_key"]
         )
 
 
@@ -192,7 +136,6 @@ def normalize_debrid(cfg):
     )
 
 
-
 @router.get("/manifest.json")
 async def manifest(request: Request):
 
@@ -206,13 +149,16 @@ async def manifest(request: Request):
         "http"
     )
 
-    base_url = f"{scheme}://{host}"
-
-    return _manifest(base_url)
+    return _manifest(
+        f"{scheme}://{host}"
+    )
 
 
 @router.get("/{config}/manifest.json")
-async def manifest_configured(request: Request, config:str):
+async def manifest_configured(
+    request: Request,
+    config: str
+):
 
     host = request.headers.get(
         "host",
@@ -224,24 +170,26 @@ async def manifest_configured(request: Request, config:str):
         "http"
     )
 
-    base_url = f"{scheme}://{host}"
-
-    return _manifest(base_url)
+    return _manifest(
+        f"{scheme}://{host}"
+    )
 
 
 @router.get(
     "/{config}/stream/{type}/{id}.json"
 )
 async def stream(
-    config:str,
-    type:str,
-    id:str
+    config: str,
+    type: str,
+    id: str
 ):
 
     cfg = _decode_config(config)
 
 
-    provider_str, api_key = normalize_debrid(cfg)
+    provider_str, api_key = normalize_debrid(
+        cfg
+    )
 
 
     try:
@@ -266,53 +214,21 @@ async def stream(
         imdb_id=imdb_id
     )
 
-    # Optionally include torrents from the user's debrid account
-    if cfg.get("scrape_debrid"):
 
-        try:
-            client = get_debrid_client(provider, api_key)
-            user_items = await client.list_user_torrents()
-            user_torrents: list[TorrentResult] = []
+    if not torrents:
 
-            for item in user_items:
+        return {
+            "streams":[]
+        }
 
-                h = item.get('hash') or item.get('info_hash') or item.get('id')
 
-                if not h:
-                    continue
-
-                title = item.get('filename') or item.get('name') or f"Debrid {h[:8]}"
-
-                magnet = item.get('magnet') or ''
-
-                size = item.get('size') or item.get('size_bytes') or item.get('filesize')
-
-                try:
-                    size_bytes = int(size) if size else None
-                except Exception:
-                    size_bytes = None
-
-                user_torrents.append(
-                    TorrentResult(
-                        title=title,
-                        info_hash=h,
-                        magnet=magnet,
-                        size_bytes=size_bytes,
-                        seeders=None,
-                        source='debrid-account'
-                    )
-                )
-
-            # Prepend user torrents so they are considered first
-            torrents = user_torrents + torrents
-
-        except Exception:
-            # best-effort — ignore failures to list account torrents
-            pass
-
-    # Apply filtering pipeline using UI config
+    # Apply user filters
     pipeline = FilterPipeline(cfg)
-    torrents = pipeline.apply(torrents)
+
+    torrents = pipeline.apply(
+        torrents
+    )
+
 
     if not torrents:
 
@@ -327,6 +243,7 @@ async def stream(
     )
 
 
+    # Check TorBox/RD cache status
     status_map = await client.check_cache(
         [
             t.info_hash
@@ -334,34 +251,32 @@ async def stream(
         ]
     )
 
+
     cached_only = _parse_bool(
         cfg.get("cached_only")
     )
 
-    async def _build_cached_debrid_streams():
-        streams = []
 
-        for t in torrents:
-            if status_map.get(t.info_hash) != CacheStatus.CACHED:
-                continue
+    output = []
 
-            magnet = (
-                t.magnet
-                if t.magnet
-                else f"magnet:?xt=urn:btih:{t.info_hash}"
-            )
 
-            try:
-                torrent_id = await client.add_magnet(magnet)
-                playback = await client.get_playback_link(
-                    torrent_id,
-                    None,
-                )
+    for t in torrents:
 
-            except Exception:
-                continue
+        cached = (
+            status_map.get(t.info_hash)
+            == CacheStatus.CACHED
+        )
 
-            streams.append(
+
+        # Skip uncached torrents
+        if cached_only and not cached:
+            continue
+
+
+        # Only expose cached debrid streams
+        if cached:
+
+            output.append(
                 {
                     "name":
                         f"🧙 Cauldron {provider.value.capitalize()} Cached",
@@ -372,32 +287,27 @@ async def stream(
                     "infoHash":
                         t.info_hash,
 
-                    "stream_url":
-                        playback.playback_url,
-
-                    "url":
-                        playback.playback_url,
-
                     "sources":
                         [
                             f"tracker:{t.info_hash}"
                         ],
 
-                    "provider":
-                        str(playback.provider)
+                    "behaviorHints":
+                        {
+                            "bingeGroup":
+                                "cauldron"
+                        }
                 }
             )
 
-        return streams
 
-    output = []
+        # Optional raw torrent results
+        elif not cached_only:
 
-    if not cached_only:
-        for t in torrents:
             output.append(
                 {
                     "name":
-                        f"🧙 Cauldron {'⚡ Cached' if status_map.get(t.info_hash) == CacheStatus.CACHED else ''}",
+                        "🧙 Cauldron Torrent",
 
                     "title":
                         t.title,
@@ -412,9 +322,6 @@ async def stream(
                 }
             )
 
-    output.extend(
-        await _build_cached_debrid_streams()
-    )
 
     return {
         "streams": output
