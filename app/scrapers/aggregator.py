@@ -1,8 +1,6 @@
 """
-Fans a search query out to every registered scraper concurrently and
-merges/deduplicates the results by info_hash.
-
-Results can optionally be ranked using user preferences.
+Fans a search query out to every registered scraper concurrently
+and merges/deduplicates torrent results.
 """
 
 import asyncio
@@ -19,7 +17,6 @@ from app.ranking.scorer import rank_results
 logger = logging.getLogger(__name__)
 
 
-# Add additional Scraper subclasses here to expand sources.
 _SCRAPERS: list[Scraper] = [
     JackettScraper(),
 ]
@@ -29,56 +26,105 @@ async def search_all(
     query: str,
     *,
     imdb_id: str | None = None,
+    season: str | None = None,
+    episode: str | None = None,
+    media_type: str | None = None,
     preferences: RankingPreferences | None = None,
 ) -> list[TorrentResult]:
 
-    tasks = [
-        _safe_search(
-            scraper,
-            query,
-            imdb_id,
-        )
-        for scraper in _SCRAPERS
-    ]
 
-    results_per_scraper = await asyncio.gather(*tasks)
+    queries = []
 
 
-    # Deduplicate by info hash
-    # Keep the version with the highest seed count
-    merged: dict[str, TorrentResult] = {}
+    # Original query
+    queries.append(query)
+
+
+    # TV episode searching
+    if media_type == "series":
+
+        if season and episode:
+
+            s = int(season)
+            e = int(episode)
+
+            queries.extend(
+                [
+                    f"{query} S{s:02d}E{e:02d}",
+                    f"{query} Season {s} Episode {e}",
+                    f"{query} {s}x{e}",
+                ]
+            )
+
+
+    queries = list(
+        dict.fromkeys(queries)
+    )
+
+
+    tasks = []
+
+
+    for q in queries:
+
+        for scraper in _SCRAPERS:
+
+            tasks.append(
+                _safe_search(
+                    scraper,
+                    q,
+                    imdb_id,
+                )
+            )
+
+
+    results_per_scraper = await asyncio.gather(
+        *tasks
+    )
+
+
+    merged: dict[str,TorrentResult] = {}
+
 
     for results in results_per_scraper:
 
         for result in results:
 
-            existing = merged.get(result.info_hash)
+            existing = merged.get(
+                result.info_hash
+            )
+
 
             if (
                 existing is None
-                or (result.seeders or 0) > (existing.seeders or 0)
+                or (result.seeders or 0)
+                >
+                (existing.seeders or 0)
             ):
+
                 merged[result.info_hash] = result
 
 
-    results = list(merged.values())
+
+    results = list(
+        merged.values()
+    )
 
 
-    # Apply user ranking preferences
     if preferences:
+
         return rank_results(
             results,
-            preferences,
+            preferences
         )
 
 
-    # Default fallback
-    # Sort by seeders
     return sorted(
         results,
         key=lambda r: r.seeders or 0,
         reverse=True,
     )
+
 
 
 async def _safe_search(
@@ -93,6 +139,7 @@ async def _safe_search(
             query,
             imdb_id=imdb_id,
         )
+
 
     except Exception:
 
