@@ -5,7 +5,7 @@ All values are overridable via environment variables / .env file.
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     addon_id: str = "community.cauldron"
     addon_name: str = "Cauldron"
     addon_version: str = "0.1.0"
+    addon_url: str = "http://localhost:8000"
 
     # --- Jackett (self-hosted torrent indexer aggregator) ---
     # Point this at your own Jackett instance. Jackett handles talking to
@@ -41,6 +42,16 @@ class Settings(BaseSettings):
     # --- Search behavior ---
     max_results_per_scraper: int = 50
     scrape_timeout_seconds: int = 20
+
+    # --- CORS ---
+    cors_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",")]
+        return v
 
 
 @lru_cache

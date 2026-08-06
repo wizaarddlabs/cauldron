@@ -164,13 +164,39 @@ class RealDebridClient(DebridClient):
             )
 
 
+    async def list_user_torrents(self) -> list[dict]:
+        """
+        Attempts to list torrents present in the user's Real-Debrid account.
+        Returns a list of dicts; each dict should contain at least `hash` and
+        optionally `filename` or `name` and `magnet` if available.
+        This method is best-effort and returns an empty list on any failure.
+        """
+
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(f"{self._base}/torrents", headers=self._headers)
+
+                if resp.status_code != 200:
+                    return []
+
+                data = resp.json()
+
+                # RD returns an object keyed by id in some versions; normalize to list
+                if isinstance(data, dict):
+                    return list(data.values())
+
+                return data
+
+        except Exception:
+            return []
+
+
 
     async def get_playback_link(
         self,
         torrent_id: str,
         file_index: Optional[int] = None
     ) -> ResolveResponse:
-
 
         async with httpx.AsyncClient(timeout=15) as client:
 
@@ -183,6 +209,14 @@ class RealDebridClient(DebridClient):
 
             info = info_resp.json()
 
+            # Check if torrent is ready to download
+            status = info.get("status", "")
+            if status not in ["downloaded", "waiting_files_selection"]:
+                # Torrent not ready yet, return error to indicate it needs time
+                raise RuntimeError(
+                    f"Torrent not ready on Real-Debrid (status: {status})"
+                )
+
             links = info.get(
                 "links",
                 []
@@ -191,7 +225,7 @@ class RealDebridClient(DebridClient):
 
             if not links:
                 raise RuntimeError(
-                    "Torrent not ready on Real-Debrid"
+                    "Torrent not ready on Real-Debrid - no links available"
                 )
 
 

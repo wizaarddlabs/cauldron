@@ -5,6 +5,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pathlib import Path
 
 from app.api.routes import router as api_router
 from app.api.stremio import router as stremio_router
@@ -28,6 +30,28 @@ app = FastAPI(
 )
 
 
+# ==================================================
+# MANIFEST (Stremio addon) - must be first
+# ==================================================
+
+@app.get("/manifest.json")
+async def manifest():
+    print("Manifest endpoint called", flush=True)
+    response = {
+        "id": settings.addon_id,
+        "version": settings.addon_version,
+        "name": settings.addon_name,
+        "description": "Open-source torrent search + debrid resolution service.",
+        "types": ["movie", "series"],
+        "catalogs": [],
+        "resources": ["stream"],
+        "background": f"{settings.addon_url}/static/cauldron.png",
+        "logo": f"{settings.addon_url}/static/cauldron.png"
+    }
+    print("Manifest response:", response, flush=True)
+    return response
+
+
 
 # ==================================================
 # CORS
@@ -35,9 +59,28 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
+)
+
+
+
+# ==================================================
+# ROUTES
+# ==================================================
+
+# Include routers - web router with manifest first
+app.include_router(
+    web_router
+)
+
+app.include_router(
+    api_router
+)
+
+app.include_router(
+    stremio_router
 )
 
 
@@ -65,26 +108,6 @@ if STATIC_DIR.exists():
 
 
 # ==================================================
-# ROUTES
-# ==================================================
-
-app.include_router(
-    web_router
-)
-
-
-app.include_router(
-    api_router
-)
-
-
-app.include_router(
-    stremio_router
-)
-
-
-
-# ==================================================
 # HEALTH
 # ==================================================
 
@@ -95,7 +118,6 @@ async def health():
         "status": "ok",
         "version": settings.addon_version
     }
-
 
 
 # ==================================================

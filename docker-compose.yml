@@ -19,6 +19,8 @@ services:
       - JACKETT_INDEXERS=${JACKETT_INDEXERS:-all}
       - REDIS_URL=redis://redis:6379/0
       - JACKETT_API_KEY=${JACKETT_API_KEY}
+      - ADDON_URL=${ADDON_URL:-http://localhost:8000}
+      - ADDON_URL=${ADDON_URL:-http://localhost:8000}
 
     depends_on:
       - jackett

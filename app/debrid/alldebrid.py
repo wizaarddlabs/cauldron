@@ -64,23 +64,57 @@ class AllDebridClient(DebridClient):
     async def get_playback_link(
         self, torrent_id: str, file_index: Optional[int] = None
     ) -> ResolveResponse:
-        files = await self.list_files(torrent_id)
-        if not files:
-            raise RuntimeError("Torrent not yet ready on AllDebrid (still downloading?)")
+        try:
+            files = await self.list_files(torrent_id)
+            if not files:
+                raise RuntimeError("Torrent not yet ready on AllDebrid (still downloading?)")
 
-        idx = file_index if file_index is not None and file_index < len(files) else 0
-        chosen = files[idx]
-        link = chosen.get("link")
+            idx = file_index if file_index is not None and file_index < len(files) else 0
+            chosen = files[idx]
+            link = chosen.get("link")
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                f"{self._base}/link/unlock", params={**self._params, "link": link}
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    f"{self._base}/link/unlock", params={**self._params, "link": link}
+                )
+                resp.raise_for_status()
+                unlocked = resp.json()["data"]
+
+            return ResolveResponse(
+                playback_url=unlocked["link"],
+                file_name=unlocked.get("filename", chosen.get("filename")),
+                provider="alldebrid",
             )
-            resp.raise_for_status()
-            unlocked = resp.json()["data"]
+        except Exception as e:
+            print(f"Error getting AllDebrid playback link: {e}, torrent may not be ready", flush=True)
+            raise
 
-        return ResolveResponse(
-            playback_url=unlocked["link"],
-            file_name=unlocked.get("filename", chosen.get("filename")),
-            provider="alldebrid",
-        )
+    async def list_user_torrents(self) -> list[dict]:
+        """
+        Attempts to list torrents present in the user's AllDebrid account.
+        Returns a list of dicts; each dict should contain at least `hash` and
+        optionally `filename` or `name` and `magnet` if available.
+        This method is best-effort and returns an empty list on any failure.
+        """
+        try:
+            url = f"{self._base}/magnet/status"
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(url, params={**self._params})
+                if resp.status_code != 200:
+                    return []
+                data = resp.json()
+                magnets = data.get("data", {}).get("magnets", {})
+                if isinstance(magnets, dict):
+                    return [
+                        {
+                            "hash": m.get("hash"),
+                            "filename": m.get("filename"),
+                            "name": m.get("filename"),
+                            "size": m.get("size"),
+                            "status": m.get("status")
+                        }
+                        for m in magnets.values()
+                    ]
+                return []
+        except Exception:
+            return []

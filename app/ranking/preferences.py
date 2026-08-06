@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 import json
 
@@ -14,15 +14,23 @@ class RankingPreferences:
 
 
     # Playback preferences
-    resolution: str = "any"
+    resolution: list[str] = field(default_factory=lambda: ["2160p", "1440p", "1080p", "720p", "576p", "480p", "360p", "240p", "unknown"])
 
-    language: str = "english"
+    language: list[str] = field(default_factory=list)
+
+    required_languages: list[str] = field(default_factory=list)
+
+    preferred_languages: list[str] = field(default_factory=list)
+
+    excluded_languages: list[str] = field(default_factory=list)
+
+    multi_language: bool = False
 
     audio: str = "any"
 
     quality_profile: str = "balanced"
 
-    codec: str = "any"
+    codec: list[str] = field(default_factory=lambda: ["hevc", "h264", "av1", "remux"])
 
 
 
@@ -38,15 +46,34 @@ class RankingPreferences:
 
     prefer_hevc: bool = True
 
-
+    prefer_atmos: bool = True
 
     allow_cam: bool = False
 
+    allow_season_packs: bool = False
 
     min_seeders: int = 0
 
-
     seeder_weight: float = 1.0
+
+    # Sorting
+    sort_criteria: list[str] = field(default_factory=lambda: ["seeders", "resolution", "quality"])
+    sort_order: str = "desc"
+
+    # Additional fields from web form
+    filters: list[str] = field(default_factory=list)
+    custom_patterns: str = ""
+    cached_only: bool = False
+    dedupe_streams: bool = False
+    scrape_debrid: bool = False
+    max_per_resolution: int = 0
+    max_size_gb: float = 0
+
+    # Debrid API keys
+    torbox_key: str = ""
+    realdebrid_key: str = ""
+    alldebrid_key: str = ""
+    premiumize_key: str = ""
 
 
 
