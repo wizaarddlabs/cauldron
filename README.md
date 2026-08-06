@@ -34,7 +34,7 @@ interface and register it in `app/debrid/factory.py`.
 Quick start (Docker)
 ```bash
 git clone <your-repo-url>
-cd torrentio-debrid
+cd cauldron
 cp .env.example .env
 
 docker compose up -d
