@@ -47,12 +47,15 @@ def score_result(
     if "hdr" in title:
         score += 100
 
+    if "atmos" in title or "dolby atmos" in title:
+        score += 80
+
 
     # =====================
     # Codec
     # =====================
 
-    if "x265" in title or "hevc" in title:
+    if prefs.prefer_hevc and ("x265" in title or "hevc" in title):
         score += 75
 
 

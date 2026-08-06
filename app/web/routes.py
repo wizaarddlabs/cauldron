@@ -92,6 +92,9 @@ async def update_settings(request: Request):
         "prefer_hevc":
             "prefer_hevc" in form,
 
+        "prefer_atmos":
+            "prefer_atmos" in form,
+
         "allow_cam":
             "allow_cam" in form,
 
@@ -241,6 +244,9 @@ async def generate_manifest(request: Request):
 
         "prefer_hevc":
             "prefer_hevc" in form,
+
+        "prefer_atmos":
+            "prefer_atmos" in form,
 
         "allow_cam":
             "allow_cam" in form,

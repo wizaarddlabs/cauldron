@@ -14,7 +14,7 @@ class RankingPreferences:
 
 
     # Playback preferences
-    resolution: list[str] = field(default_factory=list)
+    resolution: list[str] = field(default_factory=lambda: ["2160p", "1440p", "1080p", "720p", "576p", "480p", "360p", "240p", "unknown"])
 
     language: list[str] = field(default_factory=list)
 
@@ -30,7 +30,7 @@ class RankingPreferences:
 
     quality_profile: str = "balanced"
 
-    codec: list[str] = field(default_factory=list)
+    codec: list[str] = field(default_factory=lambda: ["hevc", "h264", "av1", "remux"])
 
 
 
@@ -45,6 +45,8 @@ class RankingPreferences:
     prefer_remux: bool = True
 
     prefer_hevc: bool = True
+
+    prefer_atmos: bool = True
 
 
 
@@ -64,6 +66,7 @@ class RankingPreferences:
     scrape_debrid: bool = False
     max_per_resolution: int = 0
     max_size_gb: float = 0
+    prefer_atmos: bool = True
 
 
 

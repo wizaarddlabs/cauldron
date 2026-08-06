@@ -94,7 +94,7 @@
       <div class="pill"><input id="prefer_dv" type="checkbox" name="prefer_dolby_vision" value="1" {% if prefs.prefer_dolby_vision %}checked{% endif %}><label for="prefer_dv">Dolby Vision</label></div>
       <div class="pill"><input id="prefer_remux" type="checkbox" name="prefer_remux" value="1" {% if prefs.prefer_remux %}checked{% endif %}><label for="prefer_remux">Remux</label></div>
       <div class="pill"><input id="prefer_hevc" type="checkbox" name="prefer_hevc" value="1" {% if prefs.prefer_hevc %}checked{% endif %}><label for="prefer_hevc">HEVC</label></div>
-      <div class="pill"><input id="prefer_atmos" type="checkbox" name="prefer_atmos" value="1"><label for="prefer_atmos">Atmos</label></div>
+      <div class="pill"><input id="prefer_atmos" type="checkbox" name="prefer_atmos" value="1" {% if prefs.prefer_atmos %}checked{% endif %}><label for="prefer_atmos">Atmos</label></div>
     </div>
   </div>
 
@@ -197,10 +197,10 @@
   <div class="card">
     <h2>Codec</h2>
     <div class="pills">
-      <div class="pill"><input id="codec_hevc" type="checkbox" name="codec" value="hevc" {% if prefs.codec == 'hevc' or prefs.prefer_hevc %}checked{% endif %}><label for="codec_hevc">HEVC / x265</label></div>
-      <div class="pill"><input id="codec_x264" type="checkbox" name="codec" value="h264" {% if prefs.codec == 'h264' %}checked{% endif %}><label for="codec_x264">H.264 / x264</label></div>
-      <div class="pill"><input id="codec_av1" type="checkbox" name="codec" value="av1" {% if prefs.codec == 'av1' %}checked{% endif %}><label for="codec_av1">AV1</label></div>
-      <div class="pill"><input id="codec_remux" type="checkbox" name="codec" value="remux" {% if prefs.codec == 'remux' %}checked{% endif %}><label for="codec_remux">Remux</label></div>
+      <div class="pill"><input id="codec_hevc" type="checkbox" name="codec" value="hevc" {% if 'hevc' in prefs.codec or prefs.prefer_hevc %}checked{% endif %}><label for="codec_hevc">HEVC / x265</label></div>
+      <div class="pill"><input id="codec_x264" type="checkbox" name="codec" value="h264" {% if 'h264' in prefs.codec %}checked{% endif %}><label for="codec_x264">H.264 / x264</label></div>
+      <div class="pill"><input id="codec_av1" type="checkbox" name="codec" value="av1" {% if 'av1' in prefs.codec %}checked{% endif %}><label for="codec_av1">AV1</label></div>
+      <div class="pill"><input id="codec_remux" type="checkbox" name="codec" value="remux" {% if 'remux' in prefs.codec or prefs.prefer_remux %}checked{% endif %}><label for="codec_remux">Remux</label></div>
     </div>
   </div>
 
