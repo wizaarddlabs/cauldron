@@ -84,3 +84,33 @@ class AllDebridClient(DebridClient):
             file_name=unlocked.get("filename", chosen.get("filename")),
             provider="alldebrid",
         )
+
+    async def list_user_torrents(self) -> list[dict]:
+        """
+        Attempts to list torrents present in the user's AllDebrid account.
+        Returns a list of dicts; each dict should contain at least `hash` and
+        optionally `filename` or `name` and `magnet` if available.
+        This method is best-effort and returns an empty list on any failure.
+        """
+        try:
+            url = f"{self._base}/magnet/status"
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(url, params={**self._params})
+                if resp.status_code != 200:
+                    return []
+                data = resp.json()
+                magnets = data.get("data", {}).get("magnets", {})
+                if isinstance(magnets, dict):
+                    return [
+                        {
+                            "hash": m.get("hash"),
+                            "filename": m.get("filename"),
+                            "name": m.get("filename"),
+                            "size": m.get("size"),
+                            "status": m.get("status")
+                        }
+                        for m in magnets.values()
+                    ]
+                return []
+        except Exception:
+            return []

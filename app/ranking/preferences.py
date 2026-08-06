@@ -48,13 +48,9 @@ class RankingPreferences:
 
     prefer_atmos: bool = True
 
-
-
     allow_cam: bool = False
 
-
     min_seeders: int = 0
-
 
     seeder_weight: float = 1.0
 
@@ -66,7 +62,12 @@ class RankingPreferences:
     scrape_debrid: bool = False
     max_per_resolution: int = 0
     max_size_gb: float = 0
-    prefer_atmos: bool = True
+
+    # Debrid API keys
+    torbox_key: str = ""
+    realdebrid_key: str = ""
+    alldebrid_key: str = ""
+    premiumize_key: str = ""
 
 
 

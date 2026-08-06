@@ -55,7 +55,7 @@ def score_result(
     # Codec
     # =====================
 
-    if prefs.prefer_hevc and ("x265" in title or "hevc" in title):
+    if "x265" in title or "hevc" in title:
         score += 75
 
 

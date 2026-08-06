@@ -153,6 +153,9 @@ async def generate_manifest(request: Request):
                 "realdebrid"
                 if form.get("realdebrid_key")
                 else
+                "alldebrid"
+                if form.get("alldebrid_key")
+                else
                 "premiumize"
             ),
 
@@ -162,6 +165,8 @@ async def generate_manifest(request: Request):
                 form.get("torbox_key")
                 or
                 form.get("realdebrid_key")
+                or
+                form.get("alldebrid_key")
                 or
                 form.get("premiumize_key")
             ),

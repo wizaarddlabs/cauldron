@@ -44,8 +44,16 @@
         <input type="password" name="realdebrid_key" value="{{ prefs.realdebrid_key or '' }}">
       </div>
     </div>
-    <label style="margin-top:10px">Premiumize API Key</label>
-    <input type="password" name="premiumize_key" value="{{ prefs.premiumize_key or '' }}">
+    <div class="stacked-row" style="margin-top:10px">
+      <div>
+        <label>AllDebrid API Key</label>
+        <input type="password" name="alldebrid_key" value="{{ prefs.alldebrid_key or '' }}">
+      </div>
+      <div>
+        <label>Premiumize API Key</label>
+        <input type="password" name="premiumize_key" value="{{ prefs.premiumize_key or '' }}">
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -61,15 +69,15 @@
   <div class="card">
     <h2>Resolution</h2>
     <div class="pills">
-      <div class="pill"><input id="2160" type="checkbox" name="resolution" value="2160p" {% if '2160p' in prefs.resolution %}checked{% endif %}><label for="2160">2160p</label></div>
-      <div class="pill"><input id="1440" type="checkbox" name="resolution" value="1440p" {% if '1440p' in prefs.resolution %}checked{% endif %}><label for="1440">1440p</label></div>
-      <div class="pill"><input id="1080" type="checkbox" name="resolution" value="1080p" {% if '1080p' in prefs.resolution %}checked{% endif %}><label for="1080">1080p</label></div>
-      <div class="pill"><input id="720" type="checkbox" name="resolution" value="720p" {% if '720p' in prefs.resolution %}checked{% endif %}><label for="720">720p</label></div>
-      <div class="pill"><input id="576" type="checkbox" name="resolution" value="576p" {% if '576p' in prefs.resolution %}checked{% endif %}><label for="576">576p</label></div>
-      <div class="pill"><input id="480" type="checkbox" name="resolution" value="480p" {% if '480p' in prefs.resolution %}checked{% endif %}><label for="480">480p</label></div>
-      <div class="pill"><input id="360" type="checkbox" name="resolution" value="360p" {% if '360p' in prefs.resolution %}checked{% endif %}><label for="360">360p</label></div>
-      <div class="pill"><input id="240" type="checkbox" name="resolution" value="240p" {% if '240p' in prefs.resolution %}checked{% endif %}><label for="240">240p</label></div>
-      <div class="pill"><input id="unknown" type="checkbox" name="resolution" value="unknown" {% if 'unknown' in prefs.resolution %}checked{% endif %}><label for="unknown">Unknown</label></div>
+      <div class="pill"><input id="2160" type="checkbox" name="resolution" value="2160p" {% if '2160p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="2160">2160p</label></div>
+      <div class="pill"><input id="1440" type="checkbox" name="resolution" value="1440p" {% if '1440p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="1440">1440p</label></div>
+      <div class="pill"><input id="1080" type="checkbox" name="resolution" value="1080p" {% if '1080p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="1080">1080p</label></div>
+      <div class="pill"><input id="720" type="checkbox" name="resolution" value="720p" {% if '720p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="720">720p</label></div>
+      <div class="pill"><input id="576" type="checkbox" name="resolution" value="576p" {% if '576p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="576">576p</label></div>
+      <div class="pill"><input id="480" type="checkbox" name="resolution" value="480p" {% if '480p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="480">480p</label></div>
+      <div class="pill"><input id="360" type="checkbox" name="resolution" value="360p" {% if '360p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="360">360p</label></div>
+      <div class="pill"><input id="240" type="checkbox" name="resolution" value="240p" {% if '240p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="240">240p</label></div>
+      <div class="pill"><input id="unknown" type="checkbox" name="resolution" value="unknown" {% if 'unknown' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="unknown">Unknown</label></div>
     </div>
 
     <div style="margin-top:12px">
@@ -89,12 +97,12 @@
   <div class="card">
     <h2>Quality</h2>
     <div class="pills">
-      <div class="pill"><input id="prefer_4k" type="checkbox" name="prefer_4k" value="1" {% if prefs.prefer_4k %}checked{% endif %}><label for="prefer_4k">Prefer 4K</label></div>
-      <div class="pill"><input id="prefer_hdr" type="checkbox" name="prefer_hdr" value="1" {% if prefs.prefer_hdr %}checked{% endif %}><label for="prefer_hdr">HDR</label></div>
-      <div class="pill"><input id="prefer_dv" type="checkbox" name="prefer_dolby_vision" value="1" {% if prefs.prefer_dolby_vision %}checked{% endif %}><label for="prefer_dv">Dolby Vision</label></div>
-      <div class="pill"><input id="prefer_remux" type="checkbox" name="prefer_remux" value="1" {% if prefs.prefer_remux %}checked{% endif %}><label for="prefer_remux">Remux</label></div>
-      <div class="pill"><input id="prefer_hevc" type="checkbox" name="prefer_hevc" value="1" {% if prefs.prefer_hevc %}checked{% endif %}><label for="prefer_hevc">HEVC</label></div>
-      <div class="pill"><input id="prefer_atmos" type="checkbox" name="prefer_atmos" value="1" {% if prefs.prefer_atmos %}checked{% endif %}><label for="prefer_atmos">Atmos</label></div>
+      <div class="pill"><input id="prefer_4k" type="checkbox" name="prefer_4k" value="1" {% if prefs.prefer_4k | default(true) %}checked{% endif %}><label for="prefer_4k">Prefer 4K</label></div>
+      <div class="pill"><input id="prefer_hdr" type="checkbox" name="prefer_hdr" value="1" {% if prefs.prefer_hdr | default(true) %}checked{% endif %}><label for="prefer_hdr">HDR</label></div>
+      <div class="pill"><input id="prefer_dv" type="checkbox" name="prefer_dolby_vision" value="1" {% if prefs.prefer_dolby_vision | default(true) %}checked{% endif %}><label for="prefer_dv">Dolby Vision</label></div>
+      <div class="pill"><input id="prefer_remux" type="checkbox" name="prefer_remux" value="1" {% if prefs.prefer_remux | default(true) %}checked{% endif %}><label for="prefer_remux">Remux</label></div>
+      <div class="pill"><input id="prefer_hevc" type="checkbox" name="prefer_hevc" value="1" {% if prefs.prefer_hevc | default(true) %}checked{% endif %}><label for="prefer_hevc">HEVC</label></div>
+      <div class="pill"><input id="prefer_atmos" type="checkbox" name="prefer_atmos" value="1" {% if prefs.prefer_atmos | default(true) %}checked{% endif %}><label for="prefer_atmos">Atmos</label></div>
     </div>
   </div>
 
@@ -197,10 +205,10 @@
   <div class="card">
     <h2>Codec</h2>
     <div class="pills">
-      <div class="pill"><input id="codec_hevc" type="checkbox" name="codec" value="hevc" {% if 'hevc' in prefs.codec or prefs.prefer_hevc %}checked{% endif %}><label for="codec_hevc">HEVC / x265</label></div>
-      <div class="pill"><input id="codec_x264" type="checkbox" name="codec" value="h264" {% if 'h264' in prefs.codec %}checked{% endif %}><label for="codec_x264">H.264 / x264</label></div>
-      <div class="pill"><input id="codec_av1" type="checkbox" name="codec" value="av1" {% if 'av1' in prefs.codec %}checked{% endif %}><label for="codec_av1">AV1</label></div>
-      <div class="pill"><input id="codec_remux" type="checkbox" name="codec" value="remux" {% if 'remux' in prefs.codec or prefs.prefer_remux %}checked{% endif %}><label for="codec_remux">Remux</label></div>
+      <div class="pill"><input id="codec_hevc" type="checkbox" name="codec" value="hevc" {% if 'hevc' in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'])) %}checked{% endif %}><label for="codec_hevc">HEVC / x265</label></div>
+      <div class="pill"><input id="codec_x264" type="checkbox" name="codec" value="h264" {% if 'h264' in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'])) %}checked{% endif %}><label for="codec_x264">H.264 / x264</label></div>
+      <div class="pill"><input id="codec_av1" type="checkbox" name="codec" value="av1" {% if 'av1' in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'])) %}checked{% endif %}><label for="codec_av1">AV1</label></div>
+      <div class="pill"><input id="codec_remux" type="checkbox" name="codec" value="remux" {% if 'remux' in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'])) %}checked{% endif %}><label for="codec_remux">Remux</label></div>
     </div>
   </div>
 
