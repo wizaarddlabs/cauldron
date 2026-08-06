@@ -4,7 +4,7 @@ from pathlib import Path
 from app.ranking.preferences import RankingPreferences
 
 
-PREF_FILE = Path("/tmp/cauldron-ranking.json")
+PREF_FILE = Path("/data/ranking_preferences.json")
 
 
 def load_preferences() -> RankingPreferences:
@@ -35,6 +35,8 @@ def save_preferences(
     """
     Save ranking preferences.
     """
+
+    PREF_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     PREF_FILE.write_text(
         json.dumps(

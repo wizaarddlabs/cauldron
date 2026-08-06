@@ -2,7 +2,7 @@ import json
 import sqlite3
 import uuid
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 DB = Path("/data/cauldron.db")
@@ -12,18 +12,16 @@ def init_db():
 
     DB.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(DB)
+    with sqlite3.connect(DB) as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS configs (
+            id TEXT PRIMARY KEY,
+            created TEXT,
+            data TEXT
+        )
+        """)
 
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS configs (
-        id TEXT PRIMARY KEY,
-        created TEXT,
-        data TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
+        conn.commit()
 
 
 
@@ -33,22 +31,20 @@ def save_config(data):
 
     config_id = str(uuid.uuid4())[:8]
 
-    conn = sqlite3.connect(DB)
-
-    conn.execute(
-        """
-        INSERT INTO configs
-        VALUES (?, ?, ?)
-        """,
-        (
-            config_id,
-            datetime.utcnow().isoformat(),
-            json.dumps(data)
+    with sqlite3.connect(DB) as conn:
+        conn.execute(
+            """
+            INSERT INTO configs
+            VALUES (?, ?, ?)
+            """,
+            (
+                config_id,
+                datetime.now(timezone.utc).isoformat(),
+                json.dumps(data)
+            )
         )
-    )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
     return config_id
 
@@ -58,16 +54,13 @@ def load_config(config_id):
 
     init_db()
 
-    conn = sqlite3.connect(DB)
-
-    row = conn.execute(
-        """
-        SELECT data FROM configs WHERE id=?
-        """,
-        (config_id,)
-    ).fetchone()
-
-    conn.close()
+    with sqlite3.connect(DB) as conn:
+        row = conn.execute(
+            """
+            SELECT data FROM configs WHERE id=?
+            """,
+            (config_id,)
+        ).fetchone()
 
     if not row:
         return None

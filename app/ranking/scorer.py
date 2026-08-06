@@ -40,7 +40,7 @@ def score_result(
     if "dolby vision" in title:
         score += 150
 
-    elif " dv " in f" {title} ":
+    elif " dv " in title or title.startswith("dv ") or title.endswith(" dv"):
         score += 150
 
 

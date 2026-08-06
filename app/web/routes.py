@@ -2,10 +2,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.ranking.preferences import (
-    get_preferences,
+from app.ranking.store import (
+    load_preferences,
     save_preferences
 )
+from app.ranking.preferences import RankingPreferences
 
 from app.config import get_settings
 from app.config_store import save_config
@@ -23,7 +24,7 @@ templates = Jinja2Templates(
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
 
-    prefs = get_preferences()
+    prefs = load_preferences()
     settings = get_settings()
 
     manifest = request.query_params.get(
@@ -67,9 +68,8 @@ async def update_settings(request: Request):
             "balanced"
         ),
 
-        "codec": form.get(
-            "codec",
-            "any"
+        "codec": form.getlist(
+            "codec"
         ),
 
         "sort_mode": form.get(
@@ -110,7 +110,7 @@ async def update_settings(request: Request):
 
 
     save_preferences(
-        prefs
+        RankingPreferences(**prefs)
     )
 
 

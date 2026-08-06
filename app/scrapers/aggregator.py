@@ -32,19 +32,16 @@ async def search_all(
     preferences: RankingPreferences | None = None,
 ) -> list[TorrentResult]:
 
-
     queries = []
-
 
     # Original query
     queries.append(query)
 
 
     # TV episode searching
-    if media_type == "series":
+    if media_type == "series" and season and episode:
 
-        if season and episode:
-
+        try:
             s = int(season)
             e = int(episode)
 
@@ -56,10 +53,16 @@ async def search_all(
                 ]
             )
 
+        except ValueError:
+            logger.warning(
+                "Invalid season/episode values: %s/%s",
+                season,
+                episode,
+            )
 
-    queries = list(
-        dict.fromkeys(queries)
-    )
+
+    # Remove duplicate searches
+    queries = list(dict.fromkeys(queries))
 
 
     tasks = []
@@ -83,7 +86,7 @@ async def search_all(
     )
 
 
-    merged: dict[str,TorrentResult] = {}
+    merged: dict[str, TorrentResult] = {}
 
 
     for results in results_per_scraper:
@@ -98,10 +101,8 @@ async def search_all(
             if (
                 existing is None
                 or (result.seeders or 0)
-                >
-                (existing.seeders or 0)
+                > (existing.seeders or 0)
             ):
-
                 merged[result.info_hash] = result
 
 

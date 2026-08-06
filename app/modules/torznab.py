@@ -1,6 +1,7 @@
 import httpx
 import xml.etree.ElementTree as ET
 import re
+import urllib.parse
 
 from app.models import TorrentResult
 
@@ -51,21 +52,37 @@ class TorznabClient:
             seeders = None
 
 
-            # enclosure usually contains magnet
+            # Try enclosure first
             enclosure = item.find("enclosure")
 
             if enclosure is not None:
                 magnet = enclosure.attrib.get("url")
 
 
+            # Jackett commonly puts magnet in <link>
+            if not magnet:
+
+                link = item.findtext("link")
+
+                if link:
+
+                    link = urllib.parse.unquote(link)
+
+                    if link.startswith("magnet:"):
+                        magnet = link
+
+
             # Torznab attributes
-            for attr in item.findall(".//{http://torznab.com/schemas/2015/feed}attr"):
+            for attr in item.findall(
+                ".//{http://torznab.com/schemas/2015/feed}attr"
+            ):
 
                 name = attr.attrib.get("name")
                 value = attr.attrib.get("value")
 
 
                 if name == "size":
+
                     try:
                         size = int(value)
                     except:
@@ -73,6 +90,7 @@ class TorznabClient:
 
 
                 elif name == "seeders":
+
                     try:
                         seeders = int(value)
                     except:
@@ -80,10 +98,11 @@ class TorznabClient:
 
 
                 elif name == "infohash":
+
                     info_hash = value
 
 
-            # Extract infohash from magnet if needed
+            # Extract infohash from magnet
             if not info_hash and magnet:
 
                 match = re.search(
@@ -92,10 +111,10 @@ class TorznabClient:
                 )
 
                 if match:
-                    info_hash = match.group(1)
+                    info_hash = match.group(1).upper()
 
 
-            # Skip unusable torrents
+            # Skip if we cannot resolve a magnet
             if not magnet:
                 continue
 

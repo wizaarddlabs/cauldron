@@ -14,9 +14,9 @@ class RankingPreferences:
 
 
     # Playback preferences
-    resolution: str = "any"
+    resolution: list[str] = field(default_factory=list)
 
-    language: str = "english"
+    language: list[str] = field(default_factory=list)
 
     required_languages: list[str] = field(default_factory=list)
 
@@ -30,7 +30,7 @@ class RankingPreferences:
 
     quality_profile: str = "balanced"
 
-    codec: str = "any"
+    codec: list[str] = field(default_factory=list)
 
 
 
@@ -55,6 +55,15 @@ class RankingPreferences:
 
 
     seeder_weight: float = 1.0
+
+    # Additional fields from web form
+    filters: list[str] = field(default_factory=list)
+    custom_patterns: str = ""
+    cached_only: bool = False
+    dedupe_streams: bool = False
+    scrape_debrid: bool = False
+    max_per_resolution: int = 0
+    max_size_gb: float = 0
 
 
 

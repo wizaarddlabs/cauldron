@@ -164,31 +164,31 @@ class RealDebridClient(DebridClient):
             )
 
 
-        async def list_user_torrents(self) -> list[dict]:
-            """
-            Attempts to list torrents present in the user's Real-Debrid account.
-            Returns a list of dicts; each dict should contain at least `hash` and
-            optionally `filename` or `name` and `magnet` if available.
-            This method is best-effort and returns an empty list on any failure.
-            """
+    async def list_user_torrents(self) -> list[dict]:
+        """
+        Attempts to list torrents present in the user's Real-Debrid account.
+        Returns a list of dicts; each dict should contain at least `hash` and
+        optionally `filename` or `name` and `magnet` if available.
+        This method is best-effort and returns an empty list on any failure.
+        """
 
-            try:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    resp = await client.get(f"{self._base}/torrents", headers=self._headers)
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(f"{self._base}/torrents", headers=self._headers)
 
-                    if resp.status_code != 200:
-                        return []
+                if resp.status_code != 200:
+                    return []
 
-                    data = resp.json()
+                data = resp.json()
 
-                    # RD returns an object keyed by id in some versions; normalize to list
-                    if isinstance(data, dict):
-                        return list(data.values())
+                # RD returns an object keyed by id in some versions; normalize to list
+                if isinstance(data, dict):
+                    return list(data.values())
 
-                    return data
+                return data
 
-            except Exception:
-                return []
+        except Exception:
+            return []
 
 
 
