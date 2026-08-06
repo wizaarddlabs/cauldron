@@ -11,7 +11,7 @@ from app.debrid.base import DebridClient
 from app.models import CacheStatus, ResolveResponse
 
 settings = get_settings()
-AGENT = "torrentio-debrid"
+AGENT = "cauldron"
 
 
 class AllDebridClient(DebridClient):
