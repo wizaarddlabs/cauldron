@@ -114,7 +114,7 @@ class TorrinClient(DebridClient):
 
         # Check job status
         status = data.get("status", "")
-        if status not in ["completed", "cached"]:
+        if status not in ["completed", "cached", "complete"]:
             raise RuntimeError(f"Torrent not ready on Torrin (status: {status})")
 
         # Get stream URLs
