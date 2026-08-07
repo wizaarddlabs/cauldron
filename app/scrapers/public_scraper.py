@@ -62,14 +62,18 @@ class PublicScraper(Scraper):
         # Build search queries
         queries = self._build_queries(query, season, episode, media_type)
 
-        # Search each source concurrently
+        # YTS only indexes movies and EZTV only indexes TV. Calling EZTV for
+        # movies is unsafe: when it cannot resolve the IMDb ID it can return
+        # its current global listing, unrelated to the requested item.
         tasks = [
             self._search_tpb(queries, imdb_id),
             self._search_1337x(queries),
-            self._search_yts(queries, imdb_id),
             self._search_nyaa(queries),
-            self._search_eztv(queries, imdb_id),
         ]
+        if media_type == "movie":
+            tasks.append(self._search_yts(queries, imdb_id))
+        elif media_type == "series":
+            tasks.append(self._search_eztv(queries, imdb_id))
 
         results_lists = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -414,29 +418,28 @@ class PublicScraper(Scraper):
 
         return results
 
+    @staticmethod
+    def _parse_size(size_str: str) -> int | None:
+        """Convert a human-readable torrent size to bytes."""
         if not size_str:
             return None
 
-        match = _SIZE_PATTERN.search(size_str)
+        match = _SIZE_PATTERN.search(str(size_str))
         if not match:
             return None
 
         try:
             value = float(match.group(1))
             unit = match.group(2).upper()
-
             multipliers = {
                 "KB": 1024,
                 "MB": 1024 ** 2,
                 "GB": 1024 ** 3,
                 "TB": 1024 ** 4,
             }
-
-            return int(value * multipliers.get(unit, 1))
-        except (ValueError, TypeError):
+            return int(value * multipliers[unit])
+        except (ValueError, TypeError, KeyError):
             return None
-
-
 
     async def _search_eztv(
         self,

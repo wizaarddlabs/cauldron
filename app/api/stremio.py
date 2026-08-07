@@ -1,3 +1,6 @@
+import re
+
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 
 from app.scrapers.aggregator import search_all
@@ -5,9 +8,40 @@ from app.debrid.factory import get_debrid_client
 from app.models import DebridProvider, CacheStatus
 from app.config_store import load_config
 from app.filtering.sorting import sort_torrents
+from app.filtering.validation import validate_torrent_title
 from app.filtering.pipeline import FilterPipeline
 
 router = APIRouter()
+
+_CINEMETA_URL = "https://v3-cinemeta.strem.io/meta/{media_type}/{imdb_id}.json"
+
+
+async def _resolve_metadata(media_type: str, imdb_id: str) -> tuple[str, int | None, list[str]]:
+    """Resolve Stremio's IMDb ID to the title public indexers understand."""
+    if media_type not in {"movie", "series"} or not re.fullmatch(r"tt\d+", imdb_id):
+        raise HTTPException(400, "Unsupported media type or invalid IMDb ID")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(_CINEMETA_URL.format(media_type=media_type, imdb_id=imdb_id))
+            response.raise_for_status()
+        meta = response.json().get("meta", {})
+        title = meta.get("name")
+        if not isinstance(title, str) or not title:
+            raise ValueError("Cinemeta returned no title")
+
+        year_match = re.search(r"(?:19|20)\d{2}", str(meta.get("year") or meta.get("releaseInfo") or ""))
+        year = int(year_match.group()) if year_match else None
+        raw_aliases = meta.get("aliases", [])
+        if not isinstance(raw_aliases, list):
+            raw_aliases = []
+        aliases = [value for value in [meta.get("originalName"), *raw_aliases] if isinstance(value, str)]
+        return title, year, aliases
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Metadata lookup failed for {imdb_id}: {exc}", flush=True)
+        raise HTTPException(502, "Unable to resolve requested media metadata") from exc
 
 
 def _decode_config(config: str):
@@ -149,10 +183,12 @@ async def stream(
             season = parts[1]
             episode = parts[2]
 
+        expected_title, expected_year, aka_titles = await _resolve_metadata(type, imdb_id)
 
         print(
             "SEARCHING:",
-            imdb_id,
+            expected_title,
+            f"({imdb_id})",
             season,
             episode,
             flush=True
@@ -160,7 +196,7 @@ async def stream(
 
 
         torrents = await search_all(
-            query=imdb_id,
+            query=expected_title,
             imdb_id=imdb_id,
             season=season,
             episode=episode,
@@ -173,6 +209,19 @@ async def stream(
             len(torrents),
             flush=True
         )
+
+
+        validated_torrents = []
+        for torrent in torrents:
+            valid, reason = validate_torrent_title(
+                torrent.title, expected_title, expected_year, type, aka_titles
+            )
+            if valid:
+                validated_torrents.append(torrent)
+            else:
+                print(f"Rejected unrelated torrent: {torrent.title[:80]} ({reason})", flush=True)
+        torrents = validated_torrents
+        print(f"After title validation: {len(torrents)} torrents", flush=True)
 
 
         if not torrents:
