@@ -133,8 +133,6 @@ async def status():
 
         "redis": "offline",
 
-        "jackett": "offline",
-
         "debrid": "ready"
 
     }
@@ -153,22 +151,5 @@ async def status():
     except Exception:
 
         pass
-
-
-
-    try:
-
-        socket.gethostbyname(
-            "jackett"
-        )
-
-        services["jackett"] = "online"
-
-
-    except Exception:
-
-        pass
-
-
 
     return services

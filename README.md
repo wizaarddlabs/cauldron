@@ -22,7 +22,7 @@ Stremio / your app
 This project uses built-in scrapers for public torrent sites (The Pirate Bay,
 1337x, YTS, Nyaa) to find content, which is then resolved through your debrid
 provider for premium streaming. This keeps the architecture simple and
-doesn't require external indexer management like Jackett or Prowlarr.
+self-contained without external indexer dependencies.
 Supported debrid providers
 - Real-Debrid
 - AllDebrid
