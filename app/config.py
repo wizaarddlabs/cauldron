@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # --- Search behavior ---
     max_results_per_scraper: int = 200  # Soft limit for individual scrapers (can be exceeded)
     scrape_timeout_seconds: int = 20
+    bitsearch_enabled: bool = True
+    bitsearch_api_base: str = "https://bitsearch.to/api/v1"
+    bitsearch_api_key: Optional[str] = None
+    bitsearch_cache_ttl_seconds: int = 60 * 60
 
     # --- CORS ---
     cors_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")

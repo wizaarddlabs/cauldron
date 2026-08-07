@@ -11,6 +11,7 @@ Sources:
 
 import re
 import asyncio
+import time
 from urllib.parse import quote, urljoin
 from typing import Any
 
@@ -44,6 +45,7 @@ class PublicScraper(Scraper):
 
     def __init__(self):
         self.timeout = settings.scrape_timeout_seconds
+        self._bitsearch_cache: dict[str, tuple[float, list[TorrentResult]]] = {}
 
     async def search(
         self,
@@ -70,6 +72,9 @@ class PublicScraper(Scraper):
             self._search_1337x(queries),
             self._search_nyaa(queries),
         ]
+        if settings.bitsearch_enabled:
+            # One query per request preserves Bitsearch's free API allowance.
+            tasks.append(self._search_bitsearch(queries[0]))
         if media_type == "movie":
             tasks.append(self._search_yts(queries, imdb_id))
         elif media_type == "series":
@@ -120,6 +125,58 @@ class PublicScraper(Scraper):
 
 
         return list(dict.fromkeys(queries))  # Remove duplicates
+
+    async def _search_bitsearch(self, query: str) -> list[TorrentResult]:
+        """Search Bitsearch's API, using a small local cache to respect its quota."""
+        cached = self._bitsearch_cache.get(query)
+        now = time.monotonic()
+        if cached and now - cached[0] < settings.bitsearch_cache_ttl_seconds:
+            return cached[1]
+
+        headers = {"x-api-key": settings.bitsearch_api_key} if settings.bitsearch_api_key else {}
+        params = {
+            "q": query,
+            "limit": min(settings.max_results_per_scraper, 100),
+            "sort": "seeders",
+            "order": "desc",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+                response = await client.get(f"{settings.bitsearch_api_base}/search", params=params, headers=headers)
+                response.raise_for_status()
+            payload = response.json()
+            if not payload.get("success"):
+                return []
+
+            results = []
+            for item in payload.get("results", []):
+                info_hash = str(item.get("infohash", "")).lower()
+                title = item.get("title", "")
+                if not re.fullmatch(r"[a-f0-9]{40}", info_hash) or not isinstance(title, str) or not title:
+                    continue
+                try:
+                    seeders = int(item.get("seeders") or 0)
+                    leechers = int(item.get("leechers") or 0)
+                    size_bytes = int(item["size"]) if item.get("size") is not None else None
+                except (TypeError, ValueError):
+                    continue
+                results.append(TorrentResult(
+                    title=title,
+                    info_hash=info_hash,
+                    magnet=f"magnet:?xt=urn:btih:{info_hash}&dn={quote(title)}",
+                    size_bytes=size_bytes,
+                    seeders=seeders,
+                    leechers=leechers,
+                    source="bitsearch",
+                    indexer="Bitsearch",
+                    quality=_extract_quality(title),
+                ))
+            self._bitsearch_cache[query] = (now, results)
+            return results
+        except (httpx.HTTPError, ValueError) as exc:
+            print(f"Bitsearch search failed: {exc}", flush=True)
+            return []
+
 
     async def _search_tpb(
         self,
