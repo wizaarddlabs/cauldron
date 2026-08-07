@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     bitsearch_api_base: str = "https://bitsearch.to/api/v1"
     bitsearch_api_key: Optional[str] = None
     bitsearch_cache_ttl_seconds: int = 60 * 60
+    # Zilean is a self-hosted, optional index of DMM hash-list metadata.
+    zilean_enabled: bool = False
+    zilean_url: str = "http://zilean:8181"
+    zilean_max_results: int = 100
 
     # --- CORS ---
     cors_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")

@@ -4,8 +4,6 @@ services:
     build: .
     container_name: cauldron-app
 
-    network_mode: bridge
-
     ports:
       - "8008:8000"
 
@@ -17,9 +15,10 @@ services:
       - ./data:/data
 
     environment:
-      - REDIS_URL=redis://192.168.1.15:6380/0
+      - REDIS_URL=redis://redis:6379/0
       - ADDON_URL=${ADDON_URL:-http://localhost:8000}
-      - ADDON_URL=${ADDON_URL:-http://localhost:8000}
+      - ZILEAN_ENABLED=${ZILEAN_ENABLED:-false}
+      - ZILEAN_URL=${ZILEAN_URL:-http://zilean:8181}
 
     restart: unless-stopped
 
@@ -28,8 +27,6 @@ services:
     image: redis:7-alpine
     container_name: cauldron-redis
 
-    network_mode: bridge
-
     ports:
       - "6380:6379"
 
@@ -37,3 +34,37 @@ services:
       sh -c "redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_EVICTION_POLICY:-allkeys-lru}"
 
     restart: unless-stopped
+
+  zilean:
+    image: ipromknight/zilean:latest
+    container_name: cauldron-zilean
+    restart: unless-stopped
+    environment:
+      Zilean__Database__ConnectionString: "Host=zilean-postgres;Port=5432;Database=zilean;Username=zilean;Password=${ZILEAN_POSTGRES_PASSWORD}"
+      Zilean__Dmm__EnableScraping: "true"
+      Zilean__Dmm__EnableEndpoint: "true"
+      Zilean__Dmm__ImportBatched: "true"
+      Zilean__Dmm__MaxFilteredResults: "200"
+      Zilean__Imdb__EnableImportMatching: "true"
+    depends_on:
+      zilean-postgres:
+        condition: service_healthy
+
+  zilean-postgres:
+    image: postgres:16-alpine
+    container_name: cauldron-zilean-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zilean
+      POSTGRES_USER: zilean
+      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
+    volumes:
+      - zilean-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zilean -d zilean"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  zilean-postgres-data:

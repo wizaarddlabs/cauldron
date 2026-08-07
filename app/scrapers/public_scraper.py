@@ -75,6 +75,8 @@ class PublicScraper(Scraper):
         if settings.bitsearch_enabled:
             # One query per request preserves Bitsearch's free API allowance.
             tasks.append(self._search_bitsearch(queries[0]))
+        if settings.zilean_enabled and imdb_id:
+            tasks.append(self._search_zilean(imdb_id, season, episode))
         if media_type == "movie":
             tasks.append(self._search_yts(queries, imdb_id))
         elif media_type == "series":
@@ -125,6 +127,58 @@ class PublicScraper(Scraper):
 
 
         return list(dict.fromkeys(queries))  # Remove duplicates
+
+    async def _search_zilean(
+        self,
+        imdb_id: str,
+        season: str | None = None,
+        episode: str | None = None,
+    ) -> list[TorrentResult]:
+        """Query an optional self-hosted Zilean DMM hash-list index."""
+        params = {"ImdbId": imdb_id}
+        if season:
+            params["Season"] = season
+        if episode:
+            params["Episode"] = episode
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{settings.zilean_url.rstrip('/')}/dmm/filtered",
+                    params=params,
+                )
+                response.raise_for_status()
+            payload = response.json()
+            items = payload if isinstance(payload, list) else payload.get("results", [])
+            results = []
+            for item in items[:settings.zilean_max_results]:
+                if not isinstance(item, dict):
+                    continue
+                info_hash = str(item.get("info_hash", "")).lower()
+                title = item.get("raw_title") or item.get("title") or ""
+                if not re.fullmatch(r"[a-f0-9]{40}", info_hash) or not isinstance(title, str) or not title:
+                    continue
+                raw_size = item.get("size")
+                try:
+                    size_bytes = int(raw_size) if raw_size is not None else None
+                except (TypeError, ValueError):
+                    size_bytes = self._parse_size(str(raw_size))
+                results.append(TorrentResult(
+                    title=title,
+                    info_hash=info_hash,
+                    magnet=f"magnet:?xt=urn:btih:{info_hash}&dn={quote(title)}",
+                    size_bytes=size_bytes,
+                    seeders=None,
+                    leechers=None,
+                    source="zilean",
+                    indexer="Zilean",
+                    quality=item.get("resolution") or _extract_quality(title),
+                    codec=item.get("codec"),
+                ))
+            return results
+        except (httpx.HTTPError, ValueError) as exc:
+            print(f"Zilean search failed: {exc}", flush=True)
+            return []
+
 
     async def _search_bitsearch(self, query: str) -> list[TorrentResult]:
         """Search Bitsearch's API, using a small local cache to respect its quota."""
