@@ -28,8 +28,10 @@ class Settings(BaseSettings):
 
     # --- Cache ---
     redis_url: Optional[str] = Field(default=None, description="e.g. redis://localhost:6379/0")
-    cache_ttl_search: int = 60 * 30       # 30 min for scrape results
-    cache_ttl_availability: int = 60 * 10  # 10 min for debrid-cache checks
+    cache_ttl_search: int = 60 * 60       # 1 hour for scrape results (increased for high-traffic)
+    cache_ttl_availability: int = 60 * 15  # 15 min for debrid-cache checks
+    redis_max_memory: str = "512mb"      # Redis max memory limit for production
+    redis_eviction_policy: str = "allkeys-lru"  # Evict least recently used keys
 
     # --- Search behavior ---
     max_results_per_scraper: int = 50

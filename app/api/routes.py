@@ -5,7 +5,7 @@ resolve a magnet to a playable link, and manage ranking preferences.
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.cache.store import cache_get, cache_set
+from app.cache.store import cache_get, cache_set, get_cache_stats
 from app.config import get_settings
 from app.debrid.factory import get_debrid_client
 
@@ -254,3 +254,9 @@ async def resolve(
             status_code=502,
             detail=str(exc),
         ) from exc
+
+
+@router.get("/cache/stats")
+async def cache_stats():
+    """Return cache hit/miss statistics for monitoring."""
+    return get_cache_stats()

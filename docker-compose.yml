@@ -29,4 +29,7 @@ services:
     image: redis:7-alpine
     container_name: cauldron-redis
 
+    command: >
+      sh -c "redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_EVICTION_POLICY:-allkeys-lru}"
+
     restart: unless-stopped

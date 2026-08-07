@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from app.api.routes import router as api_router
 from app.api.stremio import router as stremio_router
 from app.web.routes import router as web_router
+from app.cache.store import get_cache_stats
 
 from app.config import get_settings
 
@@ -150,5 +151,8 @@ async def status():
     except Exception:
 
         pass
+
+    # Add cache statistics
+    services["cache"] = get_cache_stats()
 
     return services

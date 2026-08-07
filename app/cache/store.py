@@ -13,6 +13,7 @@ settings = get_settings()
 
 _memory_store: dict[str, tuple[float, str]] = {}
 _redis_client = None
+_cache_stats = {"hits": 0, "misses": 0}
 
 
 def _get_redis():
@@ -28,15 +29,22 @@ async def cache_get(key: str) -> Optional[Any]:
     redis_client = _get_redis()
     if redis_client:
         raw = await redis_client.get(key)
+        if raw is not None:
+            _cache_stats["hits"] += 1
+        else:
+            _cache_stats["misses"] += 1
         return json.loads(raw) if raw else None
 
     entry = _memory_store.get(key)
     if not entry:
+        _cache_stats["misses"] += 1
         return None
     expires_at, raw = entry
     if time.time() > expires_at:
         _memory_store.pop(key, None)
+        _cache_stats["misses"] += 1
         return None
+    _cache_stats["hits"] += 1
     return json.loads(raw)
 
 
@@ -48,3 +56,15 @@ async def cache_set(key: str, value: Any, ttl_seconds: int) -> None:
         return
 
     _memory_store[key] = (time.time() + ttl_seconds, raw)
+
+
+def get_cache_stats() -> dict:
+    """Return cache hit/miss statistics."""
+    total = _cache_stats["hits"] + _cache_stats["misses"]
+    hit_rate = (_cache_stats["hits"] / total * 100) if total > 0 else 0
+    return {
+        "hits": _cache_stats["hits"],
+        "misses": _cache_stats["misses"],
+        "hit_rate_percent": round(hit_rate, 2),
+        "total_requests": total
+    }
