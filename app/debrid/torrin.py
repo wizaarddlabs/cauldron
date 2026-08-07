@@ -28,22 +28,26 @@ class TorrinClient(DebridClient):
         if not info_hashes:
             return {}
 
-        url = f"{self._base}/api/availability"
+        # Torrin uses StremThru-compatible API for cache checks
+        # Convert hashes to magnet URIs
+        magnet_uris = [f"magnet:?xt=urn:btih:{h}" for h in info_hashes]
+        
+        url = f"{self._base}/magnets/check?magnet=" + ",".join(magnet_uris)
         async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.post(
+            resp = await client.get(
                 url,
                 headers=self._headers,
-                json={"hashes": info_hashes},
             )
             resp.raise_for_status()
             data = resp.json()
 
         # Torrin returns availability data with cached status
+        # Response format: {"magnet": {"cached": true/false}, ...}
         result = {}
         for h in info_hashes:
-            # Check if hash is in the response and marked as available
-            if h in data:
-                result[h] = CacheStatus.CACHED if data[h].get("cached", False) else CacheStatus.NOT_CACHED
+            magnet_uri = f"magnet:?xt=urn:btih:{h}"
+            if magnet_uri in data:
+                result[h] = CacheStatus.CACHED if data[magnet_uri].get("cached", False) else CacheStatus.NOT_CACHED
             else:
                 result[h] = CacheStatus.NOT_CACHED
 
