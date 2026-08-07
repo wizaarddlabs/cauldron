@@ -206,9 +206,9 @@ async def stream(
                 f"s{s:02d}e{e:02d}",
                 f"s{s}e{e}",
                 f"{s}x{e:02d}",
-                f"e{e:02d}",
-                f"episode {e}",
-                f"episode.{e}",
+                # f"e{e:02d}",  # Commented - matches wrong seasons
+                # f"episode {e}",  # Commented - matches wrong seasons
+                # f"episode.{e}",  # Commented - matches wrong seasons
             ]
 
 
