@@ -207,6 +207,8 @@ async def generate_manifest(request: Request):
 
         "api_key":
             (
+                form.get("torrin_key")
+                or
                 form.get("torbox_key")
                 or
                 form.get("realdebrid_key")
