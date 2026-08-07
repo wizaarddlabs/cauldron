@@ -38,6 +38,8 @@ services:
   zilean:
     image: ipromknight/zilean:latest
     container_name: cauldron-zilean
+    labels:
+      - "net.unraid.docker.icon=https://raw.githubusercontent.com/selfhosters/unraid-templates/master/templates/icons/zilean.png"
     restart: unless-stopped
     environment:
       Zilean__Database__ConnectionString: "Host=zilean-postgres;Port=5432;Database=zilean;Username=zilean;Password=${ZILEAN_POSTGRES_PASSWORD}"
@@ -53,13 +55,15 @@ services:
   zilean-postgres:
     image: postgres:16-alpine
     container_name: cauldron-zilean-postgres
+    labels:
+      - "net.unraid.docker.icon=https://raw.githubusercontent.com/linuxserver/docker-templates/master/linuxserver/postgres.png"
     restart: unless-stopped
     environment:
       POSTGRES_DB: zilean
       POSTGRES_USER: zilean
       POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
     volumes:
-      - zilean-postgres-data:/var/lib/postgresql/data
+      - ./data/zilean-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zilean -d zilean"]
       interval: 10s
