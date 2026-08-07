@@ -56,7 +56,7 @@ services:
     image: postgres:16-alpine
     container_name: cauldron-zilean-postgres
     labels:
-      - "net.unraid.docker.icon=https://raw.githubusercontent.com/linuxserver/docker-templates/master/linuxserver/postgres.png"
+      - "net.unraid.docker.icon=https://raw.githubusercontent.com/linuxserver/docker-templates/master/templates/icons/zilean.png"
     restart: unless-stopped
     environment:
       POSTGRES_DB: zilean
