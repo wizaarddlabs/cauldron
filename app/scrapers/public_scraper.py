@@ -194,40 +194,66 @@ class PublicScraper(Scraper):
                     try:
                         # 1337x search page
                         url = f"https://www.1337xx.to/search/{quote(query)}/1/"
-                        resp = await client.get(url)
+        # Better episode matching with season verification
+        if type == "series" and season and episode:
 
-                        if resp.status_code != 200:
-                            continue
+            filtered = []
 
-                        # Parse HTML for torrent links
-                        # Look for torrent rows in the search results
-                        html = resp.text
+            s = int(season)
+            e = int(episode)
 
-                        # Extract torrent links and info
-                        # This is a simplified parser - 1337x structure may change
-                        pattern = re.compile(
-                            r'<a href="/torrent/(\d+)/([^/]+)/?".*?'
-                            r'<span class="seeds">(\d+)</span>.*?'
-                            r'<span class="leeches">(\d+)</span>.*?'
-                            r'<span class="size">(\d+\.?\d*\s*[GMK]B)</span>',
-                            re.DOTALL | re.IGNORECASE
-                        )
+            # Primary patterns - require both season and episode
+            season_episode_patterns = [
+                f"s{s:02d}e{e:02d}",
+                f"s{s}e{e}",
+                f"{s}x{e:02d}",
+                f"{s}x{e}",
+            ]
 
-                        matches = pattern.findall(html)
+            # Secondary patterns - episode only (used as fallback)
+            episode_only_patterns = [
+                f"e{e:02d}",
+                f"e{e}",
+                f"episode {e}",
+                f"episode.{e}",
+            ]
 
-                        for match in matches:
-                            torrent_id, slug, seeders, leechers, size = match
+            # First pass: try exact season+episode match
+            for torrent in torrents:
+                title = torrent.title.lower()
+                
+                # Check for exact season/episode match
+                if any(pattern.lower() in title for pattern in season_episode_patterns):
+                    filtered.append(torrent)
+                    continue
 
-                            # Get the magnet link from the torrent page
-                            try:
-                                torrent_url = f"https://www.1337xx.to/torrent/{torrent_id}/{slug}/"
-                                torrent_resp = await client.get(
-                                    torrent_url,
-                                    headers={"User-Agent": "Mozilla/5.0"}
-                                )
+            # If no exact matches, try episode-only with season verification
+            if not filtered:
+                for torrent in torrents:
+                    title = torrent.title.lower()
+                    
+                    # Check for episode pattern
+                    if any(pattern.lower() in title for pattern in episode_only_patterns):
+                        # Verify season is correct or not specified
+                        season_match = False
+                        
+                        # Check if season is mentioned in title
+                        for season_num in range(1, 50):  # Check reasonable season range
+                            if f"s{season_num:02d}" in title or f"s{season_num}" in title or f"{season_num}x" in title:
+                                if season_num == s:
+                                    season_match = True
+                                break
+                        
+                        # If season not mentioned in title, accept it
+                        # If season mentioned, it must match
+                        season_mentioned = any(f"s{sn:02d}" in title or f"s{sn}" in title or f"{sn}x" in title for sn in range(1, 50))
+                        
+                        if not season_mentioned or season_match:
+                            filtered.append(torrent)
 
-                                if torrent_resp.status_code == 200:
-                                    magnet_match = re.search(
+            torrents = filtered
+
+            print(
                                         r'magnet:\?xt=urn:btih:([a-fA-F0-9]{40})',
                                         torrent_resp.text
                                     )
