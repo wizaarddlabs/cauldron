@@ -5,6 +5,7 @@ from app.debrid.factory import get_debrid_client
 from app.models import DebridProvider, CacheStatus
 from app.config_store import load_config
 from app.filtering.sorting import sort_torrents
+from app.filtering.pipeline import FilterPipeline
 
 router = APIRouter()
 
@@ -241,6 +242,11 @@ async def stream(
                 if cache_status_map.get(t.info_hash) == CacheStatus.CACHED
             ]
             print(f"After cached_only filter: {len(torrents)} torrents", flush=True)
+
+        # Apply filtering pipeline (resolution limits, quality filters, etc.)
+        pipeline = FilterPipeline(cfg)
+        torrents = pipeline.apply(torrents)
+        print(f"After filtering pipeline: {len(torrents)} torrents", flush=True)
 
 
         # Apply sorting based on user preferences
