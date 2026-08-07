@@ -6,6 +6,7 @@ Sources:
 - 1337x (web scraping)
 - YTS (API)
 - Nyaa (web scraping) - Anime-focused
+
 """
 
 import re
@@ -412,8 +413,6 @@ class PublicScraper(Scraper):
 
         return results
 
-    def _parse_size(self, size_str: str) -> int | None:
-        """Parse size string like '1.5 GB' to bytes."""
         if not size_str:
             return None
 

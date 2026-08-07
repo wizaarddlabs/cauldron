@@ -1,5 +1,6 @@
 from app.models import TorrentResult
 from app.ranking.preferences import RankingPreferences
+import re
 
 
 def score_result(
@@ -13,63 +14,116 @@ def score_result(
 
 
     # =====================
-    # Resolution priority
+    # Resolution priority (enhanced)
     # =====================
 
     if "2160p" in title or "4k" in title:
-        score += 400
+        score += 500
 
     elif "1440p" in title:
-        score += 300
+        score += 400
 
     elif "1080p" in title:
-        score += 200
+        score += 300
 
     elif "720p" in title:
+        score += 200
+
+    elif "576p" in title or "480p" in title:
         score += 100
 
 
     # =====================
-    # Premium formats
+    # Premium formats (enhanced)
     # =====================
 
     if "remux" in title:
-        score += 250
+        score += 300
 
 
-    if "dolby vision" in title:
+    # Dolby Vision variants
+    if "dolby vision" in title or "dv " in title or title.startswith("dv ") or title.endswith(" dv"):
+        score += 200
+        if "dvhe" in title or "dovi" in title:
+            score += 50  # Dolby Vision HDR10+
+            if "dv" in title and "p5" in title:
+                score += 30  # Profile 5
+            if "dv" in title and "p7" in title:
+                score += 40  # Profile 7
+
+
+    # HDR variants
+    if "hdr10+" in title:
         score += 150
-
-    elif " dv " in title or title.startswith("dv ") or title.endswith(" dv"):
-        score += 150
-
-
-    if "hdr" in title:
-        score += 100
-
-    if "atmos" in title or "dolby atmos" in title:
+    elif "hdr10" in title:
+        score += 120
+    elif "hdr" in title:
         score += 80
 
 
-    # =====================
-    # Codec
-    # =====================
+    # Audio formats
+    if "atmos" in title or "dolby atmos" in title:
+        score += 100
+        if "truehd" in title:
+            score += 50  # Atmos TrueHD
+    elif "dts-hd ma" in title:
+        score += 80
+    elif "dts-hd hra" in title:
+        score += 70
+    elif "dts" in title:
+        score += 40
+    elif "aac" in title:
+        score += 20
 
-    if "x265" in title or "hevc" in title:
-        score += 75
 
-
+    # Codec (enhanced)
     if "av1" in title:
-        score += 50
+        score += 100
+    elif "x265" in title or "hevc" in title:
+        score += 80
+    elif "x264" in title or "h264" in title:
+        score += 30
 
 
-    if "x264" in title or "h264" in title:
-        score += 25
-
+    # Channel count bonus
+    if "7.1" in title or "8ch" in title:
+        score += 40
+    elif "5.1" in title or "6ch" in title:
+        score += 20
 
 
     # =====================
-    # Seeders
+    # Release group quality (basic)
+    # =====================
+
+    # Known high-quality release groups
+    quality_groups = [
+        "ctrlhd", "ctrl", "fgt", "node", "mteam", "sparks", "rzero", "wolf",
+        "frds", "kog", "ntb", "ntg", "nzb", "yts", "yify", "rarbg",
+        "frame", "sigma", "jyk", "dhd", "ethd", "evo", "blu", "gimini",
+        "qts", "splinter", "demonoid", "cas", "club", "web", "bd"
+    ]
+
+    for group in quality_groups:
+        if group in title:
+            score += 50
+            break
+
+
+    # =====================
+    # Content quality indicators
+    # =====================
+
+    if "web-dl" in title or "webrip" in title:
+        score += 60
+    elif "bluray" in title or "bdrip" in title:
+        score += 80
+    elif "brrip" in title:
+        score += 40
+
+
+    # =====================
+    # Seeders (weighted)
     # =====================
 
     score += (
@@ -77,9 +131,8 @@ def score_result(
     ) * prefs.seeder_weight
 
 
-
     # =====================
-    # Bad releases
+    # Bad releases (enhanced)
     # =====================
 
     if not prefs.allow_cam:
@@ -88,13 +141,26 @@ def score_result(
             "cam",
             "hdcam",
             "ts",
-            "telesync"
+            "telesync",
+            "camrip",
+            "scr",
+            "dvdscr",
+            "pdvd",
+            "r5",
+            "tc"
         ]
 
         for word in bad:
             if word in title:
-                score -= 1000
+                score -= 2000
 
+
+    # =====================
+    # Age factor (prefer newer releases)
+    # =====================
+
+    # Slight penalty for very old releases (basic implementation)
+    # Could be enhanced with actual release date detection
 
 
     return score
