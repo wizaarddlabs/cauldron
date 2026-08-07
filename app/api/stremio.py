@@ -266,7 +266,7 @@ async def stream(
         output = []
 
 
-        for torrent in torrents[:25]:
+        for torrent in torrents:
 
             # Determine stream name based on cache status and debrid configuration
             cache_status = cache_status_map.get(torrent.info_hash, CacheStatus.UNKNOWN)

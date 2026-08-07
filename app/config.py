@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     redis_eviction_policy: str = "allkeys-lru"  # Evict least recently used keys
 
     # --- Search behavior ---
-    max_results_per_scraper: int = 50
+    max_results_per_scraper: int = 100
     scrape_timeout_seconds: int = 20
 
     # --- CORS ---

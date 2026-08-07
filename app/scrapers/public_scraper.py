@@ -43,7 +43,6 @@ class PublicScraper(Scraper):
 
     def __init__(self):
         self.timeout = settings.scrape_timeout_seconds
-        self.max_results = settings.max_results_per_scraper if hasattr(settings, 'max_results_per_scraper') else 50
 
     async def search(
         self,
@@ -86,9 +85,9 @@ class PublicScraper(Scraper):
                 seen_hashes.add(result.info_hash)
                 unique_results.append(result)
 
-        # Sort by seeders and limit results
+        # Sort by seeders (no limit for unlimited streams)
         unique_results.sort(key=lambda r: r.seeders or 0, reverse=True)
-        return unique_results[:self.max_results]
+        return unique_results
 
     def _build_queries(
         self,
@@ -246,14 +245,8 @@ class PublicScraper(Scraper):
                                             quality=_extract_quality(slug),
                                         ))
 
-                                        if len(results) >= self.max_results:
-                                            break
-
                             except Exception:
                                 continue
-
-                        if len(results) >= self.max_results:
-                            break
 
                     except Exception:
                         continue
@@ -317,9 +310,6 @@ class PublicScraper(Scraper):
                                     indexer="YTS",
                                     quality=quality,
                                 ))
-
-                            if len(results) >= self.max_results:
-                                break
 
                     except Exception:
                         continue
@@ -411,23 +401,14 @@ class PublicScraper(Scraper):
                                     quality=_extract_quality(title),
                                 ))
 
-                                if len(results) >= self.max_results:
-                                    break
-
                             except Exception:
                                 continue
 
-                        if len(results) >= self.max_results:
-                            break
-
-                    except Exception as e:
-                        print(f"Nyaa query error: {e}", flush=True)
+                    except Exception:
                         continue
 
-            print(f"Nyaa scraper returned {len(results)} results", flush=True)
-
-        except Exception as e:
-            print(f"Nyaa scraper error: {e}", flush=True)
+        except Exception:
+            pass
 
         return results
 
