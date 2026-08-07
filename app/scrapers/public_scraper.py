@@ -6,7 +6,7 @@ Sources:
 - 1337x (web scraping)
 - YTS (API)
 - Nyaa (web scraping) - Anime-focused
-
+- EZTV (API) - TV-focused
 """
 
 import re
@@ -68,6 +68,7 @@ class PublicScraper(Scraper):
             self._search_1337x(queries),
             self._search_yts(queries, imdb_id),
             self._search_nyaa(queries),
+            self._search_eztv(queries, imdb_id),
         ]
 
         results_lists = await asyncio.gather(*tasks, return_exceptions=True)
@@ -436,6 +437,141 @@ class PublicScraper(Scraper):
             return None
 
 
+
+    async def _search_eztv(
+        self,
+        queries: list[str],
+        imdb_id: str | None = None,
+    ) -> list[TorrentResult]:
+        """Search EZTV for TV show torrents using their API."""
+        results = []
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                base_url = "https://eztvx.to/api/get-torrents"
+
+                if imdb_id:
+                    try:
+                        params = {"imdb_id": imdb_id, "limit": 50}
+                        resp = await client.get(base_url, params=params)
+
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            torrents = data.get("torrents", [])
+
+                            for torrent in torrents:
+                                try:
+                                    title = torrent.get("title", "")
+                                    magnet = torrent.get("magnet_url", "")
+                                    hash_str = torrent.get("hash", "")
+                                    size_bytes = torrent.get("size_bytes")
+                                    seeds = torrent.get("seeds", 0)
+                                    peers = torrent.get("peers", 0)
+
+                                    if not magnet or not hash_str:
+                                        continue
+
+                                    magnet_match = re.search(
+                                        r"magnet:\?xt=urn:btih:([a-fA-F0-9]{40})",
+                                        magnet
+                                    )
+
+                                    if not magnet_match:
+                                        continue
+
+                                    info_hash = magnet_match.group(1).lower()
+
+                                    if isinstance(size_bytes, str):
+                                        try:
+                                            size_bytes = int(size_bytes)
+                                        except ValueError:
+                                            size_bytes = None
+
+                                    results.append(TorrentResult(
+                                        title=title,
+                                        info_hash=info_hash,
+                                        magnet=magnet,
+                                        size_bytes=size_bytes,
+                                        seeders=seeds,
+                                        leechers=peers,
+                                        source="eztv",
+                                        indexer="EZTV",
+                                        quality=_extract_quality(title),
+                                    ))
+
+                                except Exception:
+                                    continue
+
+                    except Exception:
+                        pass
+
+                if not results:
+                    for query in queries[:2]:
+                        try:
+                            params = {"limit": 50}
+                            resp = await client.get(base_url, params=params)
+
+                            if resp.status_code != 200:
+                                continue
+
+                            data = resp.json()
+                            torrents = data.get("torrents", [])
+
+                            for torrent in torrents:
+                                try:
+                                    title = torrent.get("title", "").lower()
+                                    query_lower = query.lower()
+
+                                    if query_lower not in title:
+                                        continue
+
+                                    magnet = torrent.get("magnet_url", "")
+                                    hash_str = torrent.get("hash", "")
+                                    size_bytes = torrent.get("size_bytes")
+                                    seeds = torrent.get("seeds", 0)
+                                    peers = torrent.get("peers", 0)
+
+                                    if not magnet or not hash_str:
+                                        continue
+
+                                    magnet_match = re.search(
+                                        r"magnet:\?xt=urn:btih:([a-fA-F0-9]{40})",
+                                        magnet
+                                    )
+
+                                    if not magnet_match:
+                                        continue
+
+                                    info_hash = magnet_match.group(1).lower()
+
+                                    if isinstance(size_bytes, str):
+                                        try:
+                                            size_bytes = int(size_bytes)
+                                        except ValueError:
+                                            size_bytes = None
+
+                                    results.append(TorrentResult(
+                                        title=torrent.get("title", ""),
+                                        info_hash=info_hash,
+                                        magnet=magnet,
+                                        size_bytes=size_bytes,
+                                        seeders=seeds,
+                                        leechers=peers,
+                                        source="eztv",
+                                        indexer="EZTV",
+                                        quality=_extract_quality(torrent.get("title", "")),
+                                    ))
+
+                                except Exception:
+                                    continue
+
+                        except Exception:
+                            continue
+
+        except Exception:
+            pass
+
+        return results
 def _extract_quality(title: str) -> str | None:
     """Extract quality from torrent title."""
     if not title:
