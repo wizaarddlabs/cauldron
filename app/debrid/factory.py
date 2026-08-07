@@ -6,6 +6,7 @@ from app.debrid.base import DebridClient
 from app.debrid.premiumize import PremiumizeClient
 from app.debrid.realdebrid import RealDebridClient
 from app.debrid.torbox import TorBoxClient
+from app.debrid.torrin import TorrinClient
 from app.models import DebridProvider
 
 _REGISTRY: dict[DebridProvider, type[DebridClient]] = {
@@ -13,6 +14,7 @@ _REGISTRY: dict[DebridProvider, type[DebridClient]] = {
     DebridProvider.ALLDEBRID: AllDebridClient,
     DebridProvider.PREMIUMIZE: PremiumizeClient,
     DebridProvider.TORBOX: TorBoxClient,
+    DebridProvider.TORRIN: TorrinClient,
 }
 
 

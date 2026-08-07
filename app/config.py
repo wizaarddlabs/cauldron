@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     alldebrid_api_base: str = "https://api.alldebrid.com/v4.1"
     premiumize_api_base: str = "https://www.premiumize.me/api"
     torbox_api_base: str = "https://api.torbox.app/v1/api"
+    torrin_api_base: str = "https://api.torrin.app"
 
     # --- Cache ---
     redis_url: Optional[str] = Field(default=None, description="e.g. redis://localhost:6379/0")

@@ -36,6 +36,10 @@
     <h2>Debrid</h2>
     <div class="stacked-row">
       <div>
+        <div>
+          <label>Torrin API Key</label>
+          <input type="password" name="torrin_key" value="{{ prefs.torrin_key or  }}">
+        </div>
         <label>TorBox API Key</label>
         <input type="password" name="torbox_key" value="{{ prefs.torbox_key or '' }}">
       </div>

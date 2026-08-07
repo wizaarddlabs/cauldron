@@ -33,6 +33,7 @@ async def manifest():
         "types": ["movie", "series"],
         "catalogs": [],
         "resources": ["stream"],
+        "idPrefixes": ["tt", "k2"],
         "background": f"{settings.addon_url}/static/cauldron.png",
         "logo": f"{settings.addon_url}/static/cauldron.png"
     }
@@ -44,13 +45,9 @@ async def config_manifest(config_id: str):
     settings = get_settings()
     
     return {
-        "id": settings.addon_id,
-        "version": settings.addon_version,
         "name": settings.addon_name,
-        "description": "Open-source torrent search + debrid resolution service.",
         "types": ["movie", "series"],
-        "catalogs": [],
-        "resources": ["stream"],
+        "idPrefixes": ["tt", "k2"],
         "background": f"{settings.addon_url}/static/cauldron.png",
         "logo": f"{settings.addon_url}/static/cauldron.png"
     }
@@ -192,6 +189,9 @@ async def generate_manifest(request: Request):
 
         "provider":
             (
+                "torrin"
+                if form.get("torrin_key")
+                else
                 "torbox"
                 if form.get("torbox_key")
                 else
