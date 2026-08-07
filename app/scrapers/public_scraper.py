@@ -5,6 +5,7 @@ Sources:
 - The Pirate Bay (via apibay.org API)
 - 1337x (web scraping)
 - YTS (API)
+- Nyaa (web scraping) - Anime-focused
 """
 
 import re
@@ -13,6 +14,7 @@ from urllib.parse import quote, urljoin
 from typing import Any
 
 import httpx
+from bs4 import BeautifulSoup
 
 from app.config import get_settings
 from app.models import TorrentResult
@@ -65,6 +67,7 @@ class PublicScraper(Scraper):
             self._search_tpb(queries, imdb_id),
             self._search_1337x(queries),
             self._search_yts(queries, imdb_id),
+            self._search_nyaa(queries),
         ]
 
         results_lists = await asyncio.gather(*tasks, return_exceptions=True)
@@ -323,6 +326,108 @@ class PublicScraper(Scraper):
 
         except Exception:
             pass
+
+        return results
+
+    async def _search_nyaa(
+        self,
+        queries: list[str],
+    ) -> list[TorrentResult]:
+        """Search Nyaa.si for anime torrents."""
+        print("Starting Nyaa search...", flush=True)
+        results = []
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                # Only try the first 3 queries for Nyaa
+                for query in queries[:3]:
+                    try:
+                        print(f"Nyaa searching for: {query}", flush=True)
+                        # Nyaa.si search URL
+                        url = f"https://nyaa.si/?q={quote(query)}&s=seeders&o=desc"
+                        headers = {"User-Agent": "Mozilla/5.0"}
+
+                        resp = await client.get(url, headers=headers)
+                        print(f"Nyaa response status: {resp.status_code}", flush=True)
+
+                        if resp.status_code != 200:
+                            continue
+
+                        soup = BeautifulSoup(resp.text, "html.parser")
+
+                        # Find torrent rows
+                        rows = soup.select("table.torrent-list tr")
+                        print(f"Nyaa found {len(rows)} rows", flush=True)
+
+                        for row in rows[1:]:  # Skip header row
+                            try:
+                                cols = row.select("td")
+                                if len(cols) < 4:
+                                    continue
+
+                                # Extract magnet link
+                                magnet_link = cols[2].select_one("a[href^='magnet:']")
+                                if not magnet_link:
+                                    continue
+
+                                magnet = magnet_link["href"]
+                                magnet_match = re.search(
+                                    r'magnet:\?xt=urn:btih:([a-fA-F0-9]{40})',
+                                    magnet
+                                )
+
+                                if not magnet_match:
+                                    continue
+
+                                info_hash = magnet_match.group(1).lower()
+
+                                # Extract title
+                                title_link = cols[1].select_one("a")
+                                title = title_link.text.strip() if title_link else ""
+
+                                # Extract seeders and leechers
+                                seeders = 0
+                                leechers = 0
+                                try:
+                                    seeders = int(cols[3].text.strip())
+                                    leechers = int(cols[4].text.strip())
+                                except (ValueError, AttributeError):
+                                    pass
+
+                                # Extract size
+                                size_str = cols[1].text.strip()
+                                size_match = re.search(r'\d+\.?\d*\s*[GMK]B', size_str, re.IGNORECASE)
+                                size = size_match.group(0) if size_match else ""
+
+                                results.append(TorrentResult(
+                                    title=title,
+                                    info_hash=info_hash,
+                                    magnet=magnet,
+                                    size_bytes=self._parse_size(size),
+                                    seeders=seeders,
+                                    leechers=leechers,
+                                    source="nyaa",
+                                    indexer="Nyaa",
+                                    quality=_extract_quality(title),
+                                ))
+
+                                if len(results) >= self.max_results:
+                                    break
+
+                            except Exception:
+                                continue
+
+                        if len(results) >= self.max_results:
+                            break
+
+                    except Exception as e:
+                        print(f"Nyaa query error: {e}", flush=True)
+                        continue
+
+            print(f"Nyaa scraper returned {len(results)} results", flush=True)
+
+        except Exception as e:
+            print(f"Nyaa scraper error: {e}", flush=True)
 
         return results
 

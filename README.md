@@ -11,7 +11,7 @@ How it works
 Stremio / your app
         │
         ▼
-  FastAPI service  ──────►  Public Torrent Sites (TPB, 1337x, YTS)
+  FastAPI service  ──────►  Public Torrent Sites (TPB, 1337x, YTS, Nyaa)
         │
         ▼
   Debrid provider (Real-Debrid / AllDebrid / Premiumize / TorBox)
@@ -20,7 +20,7 @@ Stremio / your app
   Direct playback link
 ```
 This project uses built-in scrapers for public torrent sites (The Pirate Bay,
-1337x, YTS) to find content, which is then resolved through your debrid
+1337x, YTS, Nyaa) to find content, which is then resolved through your debrid
 provider for premium streaming. This keeps the architecture simple and
 doesn't require external indexer management like Jackett or Prowlarr.
 Supported debrid providers
@@ -95,7 +95,7 @@ app/
 │   └── stremio.py           Stremio addon protocol: /manifest.json /stream/...
 ├── scrapers/
 │   ├── base.py               Scraper interface — implement this to add a source
-│   ├── public_scraper.py     Built-in scrapers for TPB, 1337x, YTS
+│   ├── public_scraper.py     Built-in scrapers for TPB, 1337x, YTS, Nyaa
 │   └── aggregator.py         Fans queries out to all registered scrapers
 ├── debrid/
 │   ├── base.py                DebridClient interface — implement to add a provider
