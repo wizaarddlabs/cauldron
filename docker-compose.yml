@@ -4,6 +4,8 @@ services:
     build: .
     container_name: cauldron-app
 
+    network_mode: bridge
+
     ports:
       - "8008:8000"
 
@@ -15,12 +17,9 @@ services:
       - ./data:/data
 
     environment:
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://192.168.1.15:6380/0
       - ADDON_URL=${ADDON_URL:-http://localhost:8000}
       - ADDON_URL=${ADDON_URL:-http://localhost:8000}
-
-    depends_on:
-      - redis
 
     restart: unless-stopped
 
@@ -28,6 +27,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: cauldron-redis
+
+    network_mode: bridge
+
+    ports:
+      - "6380:6379"
 
     command: >
       sh -c "redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_EVICTION_POLICY:-allkeys-lru}"

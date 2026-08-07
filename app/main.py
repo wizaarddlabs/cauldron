@@ -123,7 +123,6 @@ async def health():
 # ==================================================
 # STATUS
 # ==================================================
-
 @app.get("/api/status")
 async def status():
 
@@ -131,26 +130,11 @@ async def status():
 
         "api": "online",
 
-        "redis": "offline",
+        "redis": "online" if settings.redis_url else "offline",
 
         "debrid": "ready"
 
     }
-
-
-
-    try:
-
-        socket.gethostbyname(
-            "redis"
-        )
-
-        services["redis"] = "online"
-
-
-    except Exception:
-
-        pass
 
     # Add cache statistics
     services["cache"] = get_cache_stats()
