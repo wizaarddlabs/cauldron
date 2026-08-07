@@ -116,3 +116,18 @@ This project is infrastructure: it searches public torrent sites and
 interfaces with debrid services you already have accounts with. What you
 do with it, and whether that's lawful in your jurisdiction, is your
 responsibility. No content is hosted or distributed by this codebase itself.
+
+## Sources searched
+
+Cauldron aggregates results from these sources, then validates every returned title against the selected Stremio item before showing a stream:
+
+- **The Pirate Bay** — public search API.
+- **1337x** — public search results.
+- **Nyaa** — anime-focused public search.
+- **YTS** — movie-only API search.
+- **EZTV** — series-only API search.
+- **Bitsearch** — API-backed search with a small local cache to respect its request allowance.
+- **Zilean** *(optional, self-hosted)* — indexes Debrid Media Manager hash-list metadata and is queried only for movie and series IMDb IDs. The bundled Zilean and PostgreSQL services stay on Cauldron’s private Docker network and expose no host ports.
+
+Use `BITSEARCH_ENABLED` or `ZILEAN_ENABLED` in `.env` to disable either optional source. Zilean is included as a local service but remains disabled by default in `.env.example`.
+
