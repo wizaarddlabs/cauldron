@@ -355,8 +355,8 @@ class PublicScraper(Scraper):
 
                         soup = BeautifulSoup(resp.text, "html.parser")
 
-                        # Find torrent rows
-                        rows = soup.select("table.torrent-list tr")
+                        # Find torrent rows - Nyaa uses tbody structure
+                        rows = soup.select("tbody tr")
                         print(f"Nyaa found {len(rows)} rows", flush=True)
 
                         for row in rows[1:]:  # Skip header row
