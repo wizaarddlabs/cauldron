@@ -14,7 +14,7 @@ class Scraper(ABC):
     name: str
 
     @abstractmethod
-    async def search(self, query: str, *, imdb_id: str | None = None) -> list[TorrentResult]:
+    async def search(self, query: str, *, imdb_id: str | None = None, season: str | None = None, episode: str | None = None, media_type: str | None = None) -> list[TorrentResult]:
         """
         Search this source for torrents matching a free-text query
         (and/or an IMDb id, when the source supports lookups by it).

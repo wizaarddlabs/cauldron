@@ -11,7 +11,7 @@ How it works
 Stremio / your app
         │
         ▼
-  FastAPI service  ──────►  Jackett (your own instance)  ──► indexers YOU configure
+  FastAPI service  ──────►  Public Torrent Sites (TPB, 1337x, YTS)
         │
         ▼
   Debrid provider (Real-Debrid / AllDebrid / Premiumize / TorBox)
@@ -19,11 +19,10 @@ Stremio / your app
         ▼
   Direct playback link
 ```
-This project does not scrape or hardcode any specific torrent tracker.
-Instead it talks to Jackett, which you
-run yourself and configure with whatever indexers you choose in its web UI.
-This keeps the source-discovery layer pluggable and under your control —
-the same architecture Comet and MediaFusion use.
+This project uses built-in scrapers for public torrent sites (The Pirate Bay,
+1337x, YTS) to find content, which is then resolved through your debrid
+provider for premium streaming. This keeps the architecture simple and
+doesn't require external indexer management like Jackett or Prowlarr.
 Supported debrid providers
 - Real-Debrid
 - AllDebrid
@@ -39,10 +38,7 @@ cp .env.example .env
 
 docker compose up -d
 ```
-Open `http://localhost:9117` (Jackett), add the indexers you want,
-copy its API key into `.env` as `JACKETT_API_KEY`, then
-`docker compose up -d` again to pick it up.
-The app is now live at `http://localhost:8000`.
+The app is now live at `http://localhost:8000`. No additional configuration needed - it uses public torrent search APIs by default.
 Installing as a Stremio addon
 Generate your personal config segment (embeds your debrid provider + key,
 never stored server-side):
@@ -84,7 +80,7 @@ Local development (without Docker)
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # fill in JACKETT_URL / JACKETT_API_KEY
+cp .env.example .env
 
 uvicorn app.main:app --reload
 ```
@@ -99,7 +95,7 @@ app/
 │   └── stremio.py           Stremio addon protocol: /manifest.json /stream/...
 ├── scrapers/
 │   ├── base.py               Scraper interface — implement this to add a source
-│   ├── jackett_scraper.py    Default source: your Jackett instance
+│   ├── public_scraper.py     Built-in scrapers for TPB, 1337x, YTS
 │   └── aggregator.py         Fans queries out to all registered scrapers
 ├── debrid/
 │   ├── base.py                DebridClient interface — implement to add a provider
@@ -116,8 +112,7 @@ implement the four abstract methods, register it in
 `app/debrid/factory.py` and add it to the `DebridProvider` enum in
 `app/models.py`.
 Legal note
-This project is infrastructure: it indexes what you point it at (via your
-own Jackett config) and interfaces with debrid services you already have
-accounts with. What you do with it, and whether that's lawful in your
-jurisdiction, is your responsibility. No content is hosted or distributed
-by this codebase itself.
+This project is infrastructure: it searches public torrent sites and
+interfaces with debrid services you already have accounts with. What you
+do with it, and whether that's lawful in your jurisdiction, is your
+responsibility. No content is hosted or distributed by this codebase itself.

@@ -47,9 +47,18 @@ async def search(
     imdb_id: str | None = Query(
         default=None,
     ),
+    season: str | None = Query(
+        default=None,
+    ),
+    episode: str | None = Query(
+        default=None,
+    ),
+    media_type: str | None = Query(
+        default=None,
+    ),
 ):
 
-    cache_key = f"search:{q}:{imdb_id or ''}"
+    cache_key = f"search:{q}:{imdb_id or ''}:{season or ''}:{episode or ''}:{media_type or ''}"
 
     cached = await cache_get(cache_key)
 
@@ -63,6 +72,9 @@ async def search(
     results = await search_all(
         q,
         imdb_id=imdb_id,
+        season=season,
+        episode=episode,
+        media_type=media_type,
         preferences=preferences,
     )
 
@@ -124,13 +136,30 @@ async def availability(
     imdb_id: str | None = Query(
         default=None,
     ),
+    season: str | None = Query(
+        default=None,
+    ),
+    episode: str | None = Query(
+        default=None,
+    ),
+    media_type: str | None = Query(
+        default=None,
+    ),
 ):
 
     torrents = await search_all(
         q,
         imdb_id=imdb_id,
+        season=season,
+        episode=episode,
+        media_type=media_type,
         preferences=load_preferences(),
     )
+
+    if not torrents:
+        return []
+
+    print(f"Cache check for {len(torrents)} torrents", flush=True)
 
 
     if not torrents:
@@ -144,7 +173,7 @@ async def availability(
 
 
     cache_key = (
-        f"avail:{provider}:"
+        f"avail:{provider}:{q}:{season or ''}:{episode or ''}:{media_type or ''}:"
         f"{','.join(t.info_hash for t in torrents)}"
     )
 

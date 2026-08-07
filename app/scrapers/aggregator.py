@@ -8,7 +8,7 @@ import logging
 
 from app.models import TorrentResult
 from app.scrapers.base import Scraper
-from app.scrapers.jackett_scraper import JackettScraper
+from app.scrapers.public_scraper import PublicScraper
 
 from app.ranking.preferences import RankingPreferences
 from app.ranking.scorer import rank_results
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 _SCRAPERS: list[Scraper] = [
-    JackettScraper(),
+    PublicScraper(),
 ]
 
 
@@ -32,53 +32,20 @@ async def search_all(
     preferences: RankingPreferences | None = None,
 ) -> list[TorrentResult]:
 
-    queries = []
-
-    # Original query
-    queries.append(query)
-
-
-    # TV episode searching
-    if media_type == "series" and season and episode:
-
-        try:
-            s = int(season)
-            e = int(episode)
-
-            queries.extend(
-                [
-                    f"{query} S{s:02d}E{e:02d}",
-                    f"{query} Season {s} Episode {e}",
-                    f"{query} {s}x{e}",
-                ]
-            )
-
-        except ValueError:
-            logger.warning(
-                "Invalid season/episode values: %s/%s",
-                season,
-                episode,
-            )
-
-
-    # Remove duplicate searches
-    queries = list(dict.fromkeys(queries))
-
-
     tasks = []
 
+    for scraper in _SCRAPERS:
 
-    for q in queries:
-
-        for scraper in _SCRAPERS:
-
-            tasks.append(
-                _safe_search(
-                    scraper,
-                    q,
-                    imdb_id,
-                )
+        tasks.append(
+            _safe_search(
+                scraper,
+                query,
+                imdb_id,
+                season,
+                episode,
+                media_type
             )
+        )
 
 
     results_per_scraper = await asyncio.gather(
@@ -106,7 +73,6 @@ async def search_all(
                 merged[result.info_hash] = result
 
 
-
     results = list(
         merged.values()
     )
@@ -132,6 +98,9 @@ async def _safe_search(
     scraper: Scraper,
     query: str,
     imdb_id: str | None,
+    season: str | None = None,
+    episode: str | None = None,
+    media_type: str | None = None,
 ) -> list[TorrentResult]:
 
     try:
@@ -139,6 +108,9 @@ async def _safe_search(
         return await scraper.search(
             query,
             imdb_id=imdb_id,
+            season=season,
+            episode=episode,
+            media_type=media_type,
         )
 
 

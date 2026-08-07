@@ -20,17 +20,9 @@ class Settings(BaseSettings):
     addon_version: str = "0.1.0"
     addon_url: str = "http://localhost:8000"
 
-    # --- Jackett (self-hosted torrent indexer aggregator) ---
-    # Point this at your own Jackett instance. Jackett handles talking to
-    # whichever indexers you personally configure there; this project never
-    # hardcodes specific tracker scrapers.
-    jackett_url: Optional[str] = Field(default=None, description="e.g. http://localhost:9117")
-    jackett_api_key: Optional[str] = None
-    jackett_indexers: str = "all"  # comma-separated Jackett indexer IDs, or "all"
-
     # --- Debrid provider API bases (rarely need changing) ---
     realdebrid_api_base: str = "https://api.real-debrid.com/rest/1.0"
-    alldebrid_api_base: str = "https://api.alldebrid.com/v4"
+    alldebrid_api_base: str = "https://api.alldebrid.com/v4.1"
     premiumize_api_base: str = "https://www.premiumize.me/api"
     torbox_api_base: str = "https://api.torbox.app/v1/api"
 

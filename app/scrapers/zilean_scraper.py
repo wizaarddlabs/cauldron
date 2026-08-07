@@ -1,10 +1,8 @@
 """
-Jackett scraper.
+Zilean scraper (AyushSehrawat fork).
 
-Jackett is a self-hosted service that proxies Torznab-compatible search
-requests out to your configured indexers.
-
-Cauldron talks only to your own Jackett instance.
+This fork uses SQLite instead of PostgreSQL, making it much simpler to deploy.
+It also has improved incremental DMM pulls and retry logic.
 """
 
 import re
@@ -24,9 +22,9 @@ _HASH_RE = re.compile(r"btih:([a-fA-F0-9]{40})")
 _TORZNAB_NS = "{http://torznab.com/schemas/2015/feed}"
 
 
-class JackettScraper(Scraper):
+class ZileanScraper(Scraper):
 
-    name = "jackett"
+    name = "zilean"
 
 
     def __init__(
@@ -37,15 +35,15 @@ class JackettScraper(Scraper):
     ):
 
         self.base_url = (
-            base_url or settings.jackett_url or ""
+            base_url or settings.zilean_api_base or "http://zilean:8181"
         ).rstrip("/")
 
         self.api_key = (
-            api_key or settings.jackett_api_key
+            api_key or settings.zilean_api_key
         )
 
         self.indexers = (
-            indexers or settings.jackett_indexers
+            indexers or settings.zilean_indexers if hasattr(settings, 'zilean_indexers') else "all"
         )
 
 
@@ -60,70 +58,46 @@ class JackettScraper(Scraper):
         media_type: str | None = None,
     ) -> list[TorrentResult]:
 
-        if not self.base_url or not self.api_key:
+        if not self.base_url:
             return []
 
-        endpoint = (
-            f"{self.base_url}/api/v2.0/indexers/"
-            f"{self.indexers}/results/torznab/api"
-        )
+        # Zilean Torznab API endpoint
+        endpoint = f"{self.base_url}/torznab/api"
 
         attempts = []
 
-
-        #
-        # SERIES SEARCH
-        #
-        if media_type == "series":
-
-            # Use search without season/episode params (avoids 400 errors)
-            # The formatted query handles the episode selection
-            if season and episode:
-                try:
-                    s = int(season)
-                    e = int(episode)
-                    attempts.append({
-                        "apikey": self.api_key,
-                        "t": "search",
-                        "q": f"{query} S{s:02d}E{e:02d}"
-                    })
-                except ValueError:
-                    pass
-
-            # Try regular search with IMDb ID
-            if imdb_id:
+        if media_type == "series" and season and episode:
+            try:
+                s = int(season)
+                e = int(episode)
                 attempts.append({
                     "apikey": self.api_key,
-                    "t": "search",
+                    "t": "tvsearch",
                     "q": query,
-                    "imdbid": imdb_id
+                    "season": s,
+                    "ep": e
                 })
+            except ValueError:
+                pass
 
+        # Fallback to regular search
+        attempts.append({
+            "apikey": self.api_key,
+            "t": "search",
+            "q": query,
+        })
 
-        #
-        # MOVIE SEARCH
-        #
-        else:
-
-            params = {
+        if imdb_id:
+            attempts.append({
                 "apikey": self.api_key,
                 "t": "search",
                 "q": query,
-            }
-
-            if imdb_id:
-                params["imdbid"] = imdb_id
-
-
-            attempts.append(
-                params
-            )
-
+                "imdbid": imdb_id
+            })
 
         async with httpx.AsyncClient(
             timeout=settings.scrape_timeout_seconds
         ) as client:
-
 
             for params in attempts:
 
@@ -134,77 +108,45 @@ class JackettScraper(Scraper):
                         params=params,
                     )
 
-
                     if resp.status_code != 200:
                         continue
 
-
-                    results = self._parse_torznab(
+                    results = self._parse_torznab_xml(
                         resp.text
                     )
 
-
                     if results:
+                        return results[:settings.max_results_per_scraper]
 
-                        return results[
-                            :settings.max_results_per_scraper
-                        ]
-
-
-                except Exception as e:
-
-                    print(
-                        "Jackett search failed:",
-                        e,
-                        flush=True
-                    )
-
+                except Exception:
+                    # Silently fail if Zilean isn't running
+                    pass
 
         return []
 
 
 
-    def _parse_torznab(
+    def _parse_torznab_xml(
         self,
         xml_text: str,
     ) -> list[TorrentResult]:
 
-
         results = []
 
-
         try:
-
-            root = ElementTree.fromstring(
-                xml_text
-            )
-
+            root = ElementTree.fromstring(xml_text)
         except ElementTree.ParseError as e:
-
             print(f"XML PARSE ERROR: {e}", flush=True)
             return results
 
-
         for item in root.iterfind(".//item"):
+            title_el = item.find("title")
+            link_el = item.find("link")
 
-            title_el = item.find(
-                "title"
-            )
-
-            link_el = item.find(
-                "link"
-            )
-
-            if (
-                title_el is None
-                or not title_el.text
-            ):
+            if title_el is None or not title_el.text:
                 continue
 
-
             title = title_el.text.strip()
-
-
 
             magnet = None
             info_hash = None
@@ -212,81 +154,39 @@ class JackettScraper(Scraper):
             seeders = None
             indexer = None
 
-
-            for attr in item.iterfind(
-                f"{_TORZNAB_NS}attr"
-            ):
-
-                name = attr.get(
-                    "name"
-                )
-
-                value = attr.get(
-                    "value"
-                )
-
+            for attr in item.iterfind(f"{_TORZNAB_NS}attr"):
+                name = attr.get("name")
+                value = attr.get("value")
 
                 if name == "magneturl" and value:
-
                     magnet = value
-
-
                 elif name == "infohash" and value:
-
                     info_hash = value.lower()
-
-
                 elif name == "seeders" and value:
-
                     try:
                         seeders = int(value)
-
                     except ValueError:
                         pass
-
-
                 elif name == "size" and value:
-
                     try:
                         size_bytes = int(value)
-
                     except ValueError:
                         pass
 
-
             if not magnet and link_el is not None:
-
-                if (
-                    link_el.text
-                    and link_el.text.startswith("magnet:")
-                ):
+                if link_el.text and link_el.text.startswith("magnet:"):
                     magnet = link_el.text
 
-
             if not info_hash and magnet:
-
-                match = _HASH_RE.search(
-                    magnet
-                )
-
+                match = _HASH_RE.search(magnet)
                 if match:
-                    info_hash = (
-                        match.group(1)
-                        .lower()
-                    )
-
+                    info_hash = match.group(1).lower()
 
             if not info_hash:
                 continue
 
-
             if not magnet:
-
-                magnet = (
-                    f"magnet:?xt=urn:btih:{info_hash}"
-                    f"&dn={quote(title)}"
-                )
-
+                magnet = f"magnet:?xt=urn:btih:{info_hash}&dn={quote(title)}"
 
             results.append(
                 TorrentResult(
@@ -300,7 +200,6 @@ class JackettScraper(Scraper):
                     quality=_extract_quality(title),
                 )
             )
-
 
         return results
 

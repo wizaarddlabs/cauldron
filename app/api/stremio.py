@@ -80,15 +80,19 @@ async def playback(
                 raise HTTPException(500, "Debrid service not available")
 
         if not debrid_client:
-            raise HTTPException(400, "No debrid credentials configured")
+            # Fallback to P2P streaming - return magnet link
+            print("No debrid configured, falling back to P2P", flush=True)
+            magnet = f"magnet:?xt=urn:btih:{info_hash}"
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=magnet)
 
         # Construct magnet for this info_hash
         magnet = f"magnet:?xt=urn:btih:{info_hash}"
-        
+
         # Add to debrid and get playback link
         torrent_id = await debrid_client.add_magnet(magnet)
         playback_info = await debrid_client.get_playback_link(torrent_id, file_index)
-        
+
         print(f"Generated playback URL: {playback_info.playback_url[:50]}...", flush=True)
 
         # Return redirect to the debrid URL
