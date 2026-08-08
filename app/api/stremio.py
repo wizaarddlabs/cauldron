@@ -1,459 +1,1405 @@
-import re
+import asyncio
+import logging
+import time
+from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 
-from app.scrapers.aggregator import search_all
-from app.debrid.factory import get_debrid_client
-from app.models import DebridProvider, CacheStatus
+from app.config import get_settings
 from app.config_store import load_config
-from app.filtering.sorting import sort_torrents
-from app.filtering.validation import validate_torrent_title
-from app.filtering.pipeline import FilterPipeline
+from app.debrid.factory import get_debrid_client
+from app.models import CacheStatus, DebridProvider
+from app.scrapers.aggregator import search_all
+
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-_CINEMETA_URL = "https://v3-cinemeta.strem.io/meta/{media_type}/{imdb_id}.json"
+
+CINEMETA_URL = (
+    "https://v3-cinemeta.strem.io/meta/{type}/{id}.json"
+)
 
 
-async def _resolve_metadata(media_type: str, imdb_id: str) -> tuple[str, int | None, list[str]]:
-    """Resolve Stremio's IMDb ID to the title public indexers understand."""
-    if media_type not in {"movie", "series"} or not re.fullmatch(r"tt\d+", imdb_id):
-        raise HTTPException(400, "Unsupported media type or invalid IMDb ID")
+# =========================================================
+# PLAYBACK CACHE
+# =========================================================
+#
+# Stremio can request the same playback URL multiple times.
+# Without caching, every GET would:
+#
+#   1. Create a new Premiumize transfer
+#   2. Poll Premiumize
+#   3. Return another redirect
+#
+# Keep resolved playback URLs temporarily in memory.
+#
+# This is intentionally short because debrid playback URLs
+# can expire.
+# =========================================================
+
+PLAYBACK_CACHE_TTL = 300  # 5 minutes
+
+_playback_cache: dict[str, tuple[str, float]] = {}
+
+_playback_locks: dict[str, asyncio.Lock] = {}
+
+_playback_cache_lock = asyncio.Lock()
+
+
+async def _get_playback_lock(key: str) -> asyncio.Lock:
+    """
+    Get a per-playback lock.
+
+    This prevents multiple simultaneous Stremio requests
+    from creating multiple transfers for the same torrent.
+    """
+
+    async with _playback_cache_lock:
+        lock = _playback_locks.get(key)
+
+        if lock is None:
+            lock = asyncio.Lock()
+            _playback_locks[key] = lock
+
+        return lock
+
+
+def _get_cached_playback_url(key: str) -> Optional[str]:
+    """
+    Return a cached playback URL if it is still valid.
+    """
+
+    cached = _playback_cache.get(key)
+
+    if not cached:
+        return None
+
+    playback_url, expires_at = cached
+
+    if time.monotonic() >= expires_at:
+        _playback_cache.pop(key, None)
+        return None
+
+    return playback_url
+
+
+def _cache_playback_url(
+    key: str,
+    playback_url: str,
+) -> None:
+    """
+    Cache a resolved playback URL.
+    """
+
+    _playback_cache[key] = (
+        playback_url,
+        time.monotonic() + PLAYBACK_CACHE_TTL,
+    )
+
+
+# =========================================================
+# MEDIA RESOLUTION
+# =========================================================
+
+
+async def resolve_media(type_: str, id_: str):
+    imdb_id = id_
+    season = None
+    episode = None
+
+    if type_ == "series" and ":" in id_:
+        parts = id_.split(":")
+
+        imdb_id = parts[0]
+
+        if len(parts) >= 2:
+            try:
+                season = int(parts[1])
+            except ValueError:
+                season = None
+
+        if len(parts) >= 3:
+            try:
+                episode = int(parts[2])
+            except ValueError:
+                episode = None
+
+    url = CINEMETA_URL.format(
+        type="movie" if type_ == "movie" else "series",
+        id=imdb_id,
+    )
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(_CINEMETA_URL.format(media_type=media_type, imdb_id=imdb_id))
+        async with httpx.AsyncClient(
+            timeout=15
+        ) as client:
+            response = await client.get(url)
             response.raise_for_status()
-        meta = response.json().get("meta", {})
-        title = meta.get("name")
-        if not isinstance(title, str) or not title:
-            raise ValueError("Cinemeta returned no title")
+            data = response.json()
 
-        year_match = re.search(r"(?:19|20)\d{2}", str(meta.get("year") or meta.get("releaseInfo") or ""))
-        year = int(year_match.group()) if year_match else None
-        raw_aliases = meta.get("aliases", [])
-        if not isinstance(raw_aliases, list):
-            raw_aliases = []
-        aliases = [value for value in [meta.get("originalName"), *raw_aliases] if isinstance(value, str)]
-        return title, year, aliases
-    except HTTPException:
-        raise
     except Exception as exc:
-        print(f"Metadata lookup failed for {imdb_id}: {exc}", flush=True)
-        raise HTTPException(502, "Unable to resolve requested media metadata") from exc
+        logger.exception(
+            "Failed to resolve Cinemeta metadata"
+        )
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to resolve metadata: {exc}",
+        )
+
+    meta = data.get("meta") or {}
+
+    title = meta.get("name") or meta.get("title")
+
+    if not title:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not resolve title for {imdb_id}",
+        )
+
+    year = meta.get("year")
+
+    try:
+        year = int(year) if year else None
+    except (TypeError, ValueError):
+        year = None
+
+    aliases = meta.get("aliases") or []
+
+    logger.info("=== RESOLVED MEDIA ===")
+    logger.info("Type: %s", type_)
+    logger.info("IMDb: %s", imdb_id)
+    logger.info("Title: %s", title)
+    logger.info("Year: %s", year)
+    logger.info("Aliases: %s", aliases)
+    logger.info("Season: %s", season)
+    logger.info("Episode: %s", episode)
+
+    return {
+        "type": type_,
+        "imdb_id": imdb_id,
+        "title": title,
+        "year": year,
+        "aliases": aliases,
+        "season": season,
+        "episode": episode,
+    }
+
+
+# =========================================================
+# CONFIG
+# =========================================================
 
 
 def _decode_config(config: str):
     """
-    Try to load config from database first, otherwise keep compatibility
-    with Stremio config URLs.
-    """
-    try:
-        stored = load_config(config)
-        if stored:
-            return stored
-    except Exception:
-        pass
+    Load the generated Stremio configuration from SQLite.
 
-    # Fallback for compatibility
-    return {
-        "config": config
-    }
+    The config value in the Stremio URL is the short ID
+    generated by app.config_store.save_config().
+    """
+
+    cfg = load_config(config)
+
+    if cfg is None:
+        logger.error(
+            "Configuration not found: %s",
+            config,
+        )
+
+        raise HTTPException(
+            status_code=404,
+            detail=f"Configuration not found: {config}",
+        )
+
+    logger.info(
+        "Loaded config %s",
+        config,
+    )
+
+    logger.info(
+        "Config provider: %s",
+        cfg.get("provider"),
+    )
+
+    return cfg
 
 
-def normalize_debrid(cfg):
+def _normalize_debrid_config(cfg):
     """
-    Normalize debrid credentials from config to provider and api_key.
+    Normalize debrid configuration into:
+
+        (provider, api_key)
+
+    The generated Stremio configuration takes priority.
     """
+
     if cfg.get("provider") and cfg.get("api_key"):
-        return cfg["provider"], cfg["api_key"]
-
-    if cfg.get("torrin_key"):
-        return "torrin", cfg["torrin_key"]
+        return (
+            cfg["provider"],
+            cfg["api_key"],
+        )
 
     if cfg.get("torbox_key"):
-        return "torbox", cfg["torbox_key"]
+        return (
+            "torbox",
+            cfg["torbox_key"],
+        )
 
     if cfg.get("realdebrid_key"):
-        return "realdebrid", cfg["realdebrid_key"]
+        return (
+            "realdebrid",
+            cfg["realdebrid_key"],
+        )
 
     if cfg.get("alldebrid_key"):
-        return "alldebrid", cfg["alldebrid_key"]
+        return (
+            "alldebrid",
+            cfg["alldebrid_key"],
+        )
 
     if cfg.get("premiumize_key"):
-        return "premiumize", cfg["premiumize_key"]
+        return (
+            "premiumize",
+            cfg["premiumize_key"],
+        )
+
+    if cfg.get("torrin_key"):
+        return (
+            "torrin",
+            cfg["torrin_key"],
+        )
+
+    # -----------------------------------------------------
+    # Application-level Torrin configuration
+    # -----------------------------------------------------
+
+    settings = get_settings()
+
+    torrin_key = getattr(
+        settings,
+        "torrin_api_key",
+        None,
+    )
+
+    if torrin_key:
+        return (
+            "torrin",
+            torrin_key,
+        )
 
     return None, None
 
 
-@router.get("/{config}/playback/{info_hash}")
-async def playback(
-    config: str,
-    info_hash: str,
-    file_index: int = Query(None, alias="fileIndex")
-):
+# =========================================================
+# CACHE LABEL
+# =========================================================
+
+
+def _cache_status_label(status):
+    if status == CacheStatus.CACHED:
+        return "⚡ Cached"
+
+    if status == CacheStatus.NOT_CACHED:
+        return "⏳ Uncached"
+
+    return "❔ Unknown"
+
+
+# =========================================================
+# EXTERNAL URL
+# =========================================================
+
+
+def _external_base_url(request: Request) -> str:
     """
-    Playback endpoint - generates debrid streaming URL on demand.
-    Called when user clicks play on a stream.
+    Determine the externally reachable Cauldron URL.
+
+    When Cauldron is behind Nginx Proxy Manager,
+    X-Forwarded-Host / X-Forwarded-Proto are used.
+
+    This prevents Stremio from receiving internal URLs
+    such as:
+
+        http://localhost:8000/...
     """
-    try:
-        print("=== CAULDRON PLAYBACK REQUEST ===", flush=True)
-        print(f"INFO_HASH: {info_hash}", flush=True)
-        print(f"FILE_INDEX: {file_index}", flush=True)
 
-        cfg = _decode_config(config)
+    forwarded_host = request.headers.get(
+        "x-forwarded-host"
+    )
 
-        # Get debrid credentials
-        provider_str, api_key = normalize_debrid(cfg)
-        debrid_client = None
+    host = (
+        forwarded_host
+        or request.headers.get("host")
+    )
 
-        if provider_str and api_key:
-            try:
-                provider = DebridProvider(provider_str)
-                debrid_client = get_debrid_client(provider, api_key)
-                print(f"Using debrid provider: {provider_str}", flush=True)
-            except Exception as e:
-                print(f"Error initializing debrid client: {e}", flush=True)
-                raise HTTPException(500, "Debrid service not available")
+    forwarded_proto = request.headers.get(
+        "x-forwarded-proto"
+    )
 
-        if not debrid_client:
-            # Fallback to P2P streaming - return magnet link
-            print("No debrid configured, falling back to P2P", flush=True)
-            magnet = f"magnet:?xt=urn:btih:{info_hash}"
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url=magnet)
+    proto = (
+        forwarded_proto
+        or request.url.scheme
+    )
 
-        # Construct magnet for this info_hash
-        magnet = f"magnet:?xt=urn:btih:{info_hash}"
+    if host:
+        host = host.split(",")[0].strip()
+        proto = proto.split(",")[0].strip()
 
-        # Add to debrid and get playback link
-        torrent_id = await debrid_client.add_magnet(magnet)
-        playback_info = await debrid_client.get_playback_link(torrent_id, file_index)
+        return (
+            f"{proto}://{host}"
+        ).rstrip("/")
 
-        print(f"Generated playback URL: {playback_info.playback_url[:50]}...", flush=True)
+    settings = get_settings()
 
-        # Return redirect to the debrid URL
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=playback_info.playback_url)
+    return settings.addon_url.rstrip("/")
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"PLAYBACK ERROR: {repr(e)}", flush=True)
-        raise HTTPException(500, str(e))
+
+# =========================================================
+# STREAM
+# =========================================================
 
 
 @router.get("/{config}/stream/{type}/{id}.json")
 async def stream(
+    request: Request,
     config: str,
     type: str,
-    id: str
+    id: str,
 ):
+    logger.info("")
+    logger.info(
+        "========================================"
+    )
+    logger.info(
+        "=== CAULDRON STREAM REQUEST ==="
+    )
+    logger.info(
+        "TYPE: %s",
+        type,
+    )
+    logger.info(
+        "ID: %s",
+        id,
+    )
+    logger.info(
+        "CONFIG: %s",
+        config,
+    )
+    logger.info(
+        "========================================"
+    )
+
+    # -----------------------------------------------------
+    # MEDIA TYPE
+    # -----------------------------------------------------
+
+    if type not in (
+        "movie",
+        "series",
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported media type: {type}",
+        )
+
+    # -----------------------------------------------------
+    # MEDIA
+    # -----------------------------------------------------
+
+    media = await resolve_media(
+        type,
+        id,
+    )
+
+    logger.info(
+        "SEARCHING: %s (%s) S%sE%s",
+        media["title"],
+        media["imdb_id"],
+        media["season"],
+        media["episode"],
+    )
+
+    # -----------------------------------------------------
+    # CONFIG
+    # -----------------------------------------------------
+
+    cfg = _decode_config(config)
+
+    provider_str, api_key = (
+        _normalize_debrid_config(cfg)
+    )
+
+    debrid_client = None
+
+    if provider_str and api_key:
+        try:
+            provider = DebridProvider(
+                provider_str
+            )
+
+            debrid_client = (
+                get_debrid_client(
+                    provider,
+                    api_key,
+                )
+            )
+
+            logger.info(
+                "Using debrid provider: %s",
+                provider_str,
+            )
+
+        except Exception as exc:
+            logger.warning(
+                "Unable to initialize debrid "
+                "provider %s: %s",
+                provider_str,
+                exc,
+            )
+
+    else:
+        logger.info(
+            "No debrid credentials configured"
+        )
+
+    # -----------------------------------------------------
+    # SEARCH
+    # -----------------------------------------------------
 
     try:
-
-        print("=== CAULDRON STREAM REQUEST ===", flush=True)
-        print("TYPE:", type, flush=True)
-        print("ID:", id, flush=True)
-
-        cfg = _decode_config(config)
-
-        # Get debrid credentials
-        provider_str, api_key = normalize_debrid(cfg)
-        debrid_client = None
-        cache_status_map = {}
-        provider = None
-
-        if provider_str and api_key:
-            try:
-                provider = DebridProvider(provider_str)
-                debrid_client = get_debrid_client(provider, api_key)
-                print(f"Using debrid provider: {provider_str}", flush=True)
-            except Exception as e:
-                print(f"Error initializing debrid client: {e}", flush=True)
-        else:
-            print("No debrid credentials configured - using pure torrent mode", flush=True)
-
-        parts = id.split(":")
-
-        imdb_id = parts[0]
-
-        season = None
-        episode = None
-
-
-        if type == "series" and len(parts) >= 3:
-            season = parts[1]
-            episode = parts[2]
-
-        expected_title, expected_year, aka_titles = await _resolve_metadata(type, imdb_id)
-
-        print(
-            "SEARCHING:",
-            expected_title,
-            f"({imdb_id})",
-            season,
-            episode,
-            flush=True
+        results = await search_all(
+            media["title"],
+            imdb_id=media["imdb_id"],
+            season=media["season"],
+            episode=media["episode"],
+            media_type=media["type"],
         )
 
-
-        torrents = await search_all(
-            query=expected_title,
-            imdb_id=imdb_id,
-            season=season,
-            episode=episode,
-            media_type=type
-        )
-
-
-        print(
-            "FOUND TORRENTS:",
-            len(torrents),
-            flush=True
-        )
-
-
-        validated_torrents = []
-        for torrent in torrents:
-            valid, reason = validate_torrent_title(
-                torrent.title, expected_title, expected_year, type, aka_titles
-            )
-            if valid:
-                validated_torrents.append(torrent)
-            else:
-                print(f"Rejected unrelated torrent: {torrent.title[:80]} ({reason})", flush=True)
-        torrents = validated_torrents
-        print(f"After title validation: {len(torrents)} torrents", flush=True)
-
-
-        if not torrents:
-            return {
-                "streams": []
-            }
-
-        # Check cache status BEFORE filtering so we have data for all torrents
-        if debrid_client:
-            try:
-                info_hashes = [t.info_hash for t in torrents]  # Use original hashes
-                print(f"DEBUG: Checking cache for {len(info_hashes)} hashes", flush=True)
-                print(f"DEBUG: First 3 hashes to check: {info_hashes[:3]}", flush=True)
-                cache_status_map = await debrid_client.check_cache(info_hashes)
-                print(f"Cache check completed for {len(info_hashes)} torrents", flush=True)
-                # Log cache status summary
-                cached_count = 0
-                not_cached_count = 0
-                unknown_count = 0
-                for s in cache_status_map.values():
-                    if s == "cached" or str(s) == "cached":
-                        cached_count += 1
-                    elif s == "not_cached" or str(s) == "not_cached":
-                        not_cached_count += 1
-                    else:
-                        unknown_count += 1
-                print(f"Cache status summary: {cached_count} cached, {not_cached_count} not_cached, {unknown_count} unknown", flush=True)
-                print(f"Total cache_status_map entries: {len(cache_status_map)}", flush=True)
-                # Log some cache statuses for debugging
-                for info_hash, status in list(cache_status_map.items())[:5]:
-                    print(f"  {info_hash[:16]}... -> {status}", flush=True)
-            except Exception as e:
-                print(f"Error checking cache: {e}", flush=True)
-                import traceback
-                traceback.print_exc()
-                cache_status_map = {}
-        else:
-            print("No debrid client - cache_status_map will be empty", flush=True)
-            cache_status_map = {}
-
-
-        # Apply filtering pipeline (resolution limits, quality filters, etc.)
-        pipeline = FilterPipeline(cfg)
-        
-        torrents = pipeline.apply(torrents)
-        print(f"After filtering pipeline: {len(torrents)} torrents", flush=True)
-
-        # Better episode matching
-        if type == "series" and season and episode:
-
-            filtered = []
-
-            s = int(season)
-            e = int(episode)
-
-            patterns = [
-                f"s{s:02d}e{e:02d}",
-                f"s{s}e{e}",
-                f"{s}x{e:02d}",
-                # f"e{e:02d}",  # Commented - matches wrong seasons
-                # f"episode {e}",  # Commented - matches wrong seasons
-                # f"episode.{e}",  # Commented - matches wrong seasons
-            ]
-
-
-            for torrent in torrents:
-
-                title = torrent.title.lower()
-
-
-                if any(
-                    pattern.lower() in title
-                    for pattern in patterns
-                ):
-                    filtered.append(torrent)
-
-
-            torrents = filtered
-
-
-            print(
-                "AFTER EP FILTER:",
-                len(torrents),
-                flush=True
-            )
-
-
-        # Apply filtering pipeline (resolution limits, quality filters, etc.)
-        pipeline = FilterPipeline(cfg)
-        
-        torrents = pipeline.apply(torrents)
-        print(f"After filtering pipeline: {len(torrents)} torrents", flush=True)
-        
-        # Create normalized cache_status_map AFTER filtering
-        normalized_cache_map = {}
-        if debrid_client and cache_status_map:
-            print(f"DEBUG: Building normalized_cache_map for {len(torrents)} torrents", flush=True)
-            for t in torrents:
-                # Try direct match first (since Torrin now returns original hash keys)
-                status = cache_status_map.get(t.info_hash)
-                if not status:
-                    # Fallback to lowercase match
-                    status = cache_status_map.get(t.info_hash.lower())
-                normalized_cache_map[t.info_hash] = status or CacheStatus.NOT_CACHED
-                if str(status) == "cached":
-                    print(f"  Matched cached: {t.title[:40]}... (hash: {t.info_hash[:16]}...)", flush=True)
-            cached_after = sum(1 for v in normalized_cache_map.values() if str(v) == "cached")
-            print(f"  Cached torrents after filtering: {cached_after}", flush=True)
-            # Debug: show some cached torrents
-            if cached_after > 0:
-                print("Sample cached torrents:", flush=True)
-                for t in torrents[:10]:
-                    if str(normalized_cache_map.get(t.info_hash)) == "cached":
-                        print(f"  {t.title[:40]}... (hash: {t.info_hash[:16]}...)", flush=True)
-        else:
-            normalized_cache_map = {}
-
-        # Filter by cached only if enabled
-        cached_only = cfg.get("cached_only", False)
-        if cached_only and debrid_client:
-            torrents = [
-                t for t in torrents
-                if normalized_cache_map.get(t.info_hash) == CacheStatus.CACHED
-            ]
-            print(f"After cached_only filter: {len(torrents)} torrents", flush=True)
-
-
-        # Apply sorting based on user preferences
-        sort_criteria = cfg.get("sort_criteria")
-        print(f"Raw sort_criteria from config: {sort_criteria}", flush=True)
-        if isinstance(sort_criteria, str):
-            sort_criteria = sort_criteria.split(",") if sort_criteria else ["seeders", "resolution", "quality"]
-        elif not sort_criteria:
-            sort_criteria = ["seeders", "resolution", "quality"]
-        
-        print(f"Final sort_criteria: {sort_criteria}", flush=True)
-        sort_order = cfg.get("sort_order", "desc")
-        allow_season_packs = cfg.get("allow_season_packs", False)
-        
-        torrents = sort_torrents(
-            torrents,
-            sort_criteria=sort_criteria,
-            sort_order=sort_order,
-            allow_season_packs=allow_season_packs,
-            cache_status_map=normalized_cache_map if debrid_client else None
-        )
-        print(f"After sorting by {sort_criteria} {sort_order}: {len(torrents)} torrents", flush=True)
-        
-        # Debug: show first 10 torrents after sorting with their cache status
-        print("First 10 torrents after sorting:", flush=True)
-        for i, t in enumerate(torrents[:10]):
-            cache_status = normalized_cache_map.get(t.info_hash, "no_map") if debrid_client else "no_client"
-            print(f"  {i+1}. {t.title[:40]}... (cache: {cache_status})", flush=True)
-
-
-        output = []
-
-
-        for torrent in torrents:
-
-            # Determine stream name based on cache status and debrid configuration
-            cache_status = normalized_cache_map.get(torrent.info_hash, CacheStatus.UNKNOWN) if debrid_client else CacheStatus.UNKNOWN
-            stream_name = "Cauldron"
-
-            if debrid_client:
-                if cache_status == CacheStatus.CACHED:
-                    stream_name = "⚡ Cauldron (Cached)"
-                elif cache_status == CacheStatus.NOT_CACHED:
-                    stream_name = "⏳ Cauldron (uncached)"
-                else:
-                    stream_name = "⏳ Cauldron (uncached)"
-            else:
-                # No debrid configured - pure P2P
-                stream_name = "Cauldron (P2P)"
-
-            # Build stream URL
-            if debrid_client:
-                # Use playback endpoint for debrid streams
-                from app.config import get_settings
-                settings = get_settings()
-                base_url = settings.addon_url.rstrip('/')
-                stream_url = f"{base_url}/{config}/playback/{torrent.info_hash}"
-                
-                stream_data = {
-                    "name": stream_name,
-                    "title": torrent.title,
-                    "url": stream_url,
-                    "behaviorHints": {
-                        "bingeGroup": "cauldron"
-                    }
-                }
-            else:
-                # Use magnet for P2P
-                stream_data = {
-                    "name": stream_name,
-                    "title": torrent.title,
-                    "infoHash": torrent.info_hash,
-                    "sources": [f"magnet:{torrent.magnet}"],
-                    "behaviorHints": {
-                        "bingeGroup": "cauldron"
-                    }
-                }
-
-            output.append(stream_data)
-
-
-        print(
-            "RETURNING STREAMS:",
-            len(output),
-            flush=True
-        )
-
-
-        return {
-            "streams": output
-        }
-
-
-
-    except Exception as e:
-
-        print(
-            "CAULDRON STREAM ERROR:",
-            repr(e),
-            flush=True
+    except Exception as exc:
+        logger.exception(
+            "Search failed"
         )
 
         raise HTTPException(
-            500,
-            str(e)
+            status_code=500,
+            detail=f"Search failed: {exc}",
+        )
+
+    logger.info(
+        "SEARCH RESULTS: %d",
+        len(results),
+    )
+
+    if not results:
+        logger.info(
+            "NO RESULTS"
+        )
+
+        return {
+            "streams": []
+        }
+
+    # -----------------------------------------------------
+    # CACHE CHECK
+    # -----------------------------------------------------
+
+    cache_status_map = {}
+
+    if debrid_client:
+        try:
+            info_hashes = [
+                str(
+                    t.info_hash
+                ).lower()
+                for t in results
+                if getattr(
+                    t,
+                    "info_hash",
+                    None,
+                )
+            ]
+
+            logger.info(
+                "Checking %s cache status "
+                "for %d hashes",
+                provider_str,
+                len(info_hashes),
+            )
+
+            if info_hashes:
+                cache_status_map = (
+                    await debrid_client.check_cache(
+                        info_hashes
+                    )
+                )
+
+                cached_count = sum(
+                    1
+                    for status
+                    in cache_status_map.values()
+                    if status
+                    == CacheStatus.CACHED
+                )
+
+                uncached_count = sum(
+                    1
+                    for status
+                    in cache_status_map.values()
+                    if status
+                    == CacheStatus.NOT_CACHED
+                )
+
+                unknown_count = (
+                    len(info_hashes)
+                    - cached_count
+                    - uncached_count
+                )
+
+                logger.info(
+                    "CACHE RESULTS: "
+                    "%d cached / "
+                    "%d uncached / "
+                    "%d unknown / "
+                    "%d total",
+                    cached_count,
+                    uncached_count,
+                    unknown_count,
+                    len(info_hashes),
+                )
+
+                for torrent in results:
+                    info_hash = str(
+                        getattr(
+                            torrent,
+                            "info_hash",
+                            "",
+                        )
+                    ).lower()
+
+                    status = (
+                        cache_status_map.get(
+                            info_hash,
+                            CacheStatus.UNKNOWN,
+                        )
+                    )
+
+                    logger.info(
+                        "CACHE: %-12s | %s",
+                        _cache_status_label(
+                            status
+                        ),
+                        getattr(
+                            torrent,
+                            "title",
+                            "unknown",
+                        ),
+                    )
+
+        except Exception as exc:
+            logger.exception(
+                "Cache check failed: %s",
+                exc,
+            )
+
+    # -----------------------------------------------------
+    # EPISODE FILTERING
+    # -----------------------------------------------------
+
+    if (
+        media["type"] == "series"
+        and media["season"] is not None
+        and media["episode"] is not None
+    ):
+        season = int(
+            media["season"]
+        )
+
+        episode = int(
+            media["episode"]
+        )
+
+        patterns = [
+            f"s{season:02d}e{episode:02d}",
+            f"s{season}e{episode}",
+            f"{season}x{episode:02d}",
+        ]
+
+        filtered = []
+
+        for torrent in results:
+            torrent_title = str(
+                getattr(
+                    torrent,
+                    "title",
+                    "",
+                )
+            ).lower()
+
+            if any(
+                pattern.lower()
+                in torrent_title
+                for pattern in patterns
+            ):
+                filtered.append(
+                    torrent
+                )
+
+        results = filtered
+
+        logger.info(
+            "AFTER EPISODE FILTER: %d",
+            len(results),
+        )
+
+    # -----------------------------------------------------
+    # CACHED ONLY
+    # -----------------------------------------------------
+
+    cached_only = cfg.get(
+        "cached_only",
+        False,
+    )
+
+    if (
+        cached_only
+        and debrid_client
+    ):
+        results = [
+            torrent
+            for torrent in results
+            if cache_status_map.get(
+                str(
+                    torrent.info_hash
+                ).lower(),
+                CacheStatus.UNKNOWN,
+            )
+            == CacheStatus.CACHED
+        ]
+
+        logger.info(
+            "AFTER CACHED-ONLY FILTER: %d",
+            len(results),
+        )
+
+    # -----------------------------------------------------
+    # FILTERING
+    # -----------------------------------------------------
+
+    try:
+        from app.filtering.pipeline import (
+            FilterPipeline
+        )
+
+        pipeline = FilterPipeline(
+            cfg
+        )
+
+        results = pipeline.apply(
+            results
+        )
+
+        logger.info(
+            "AFTER FILTER PIPELINE: %d",
+            len(results),
+        )
+
+    except Exception:
+        logger.exception(
+            "Filtering pipeline failed"
+        )
+
+    # -----------------------------------------------------
+    # SORTING
+    # -----------------------------------------------------
+
+    try:
+        from app.filtering.sorting import (
+            sort_torrents
+        )
+
+        sort_criteria = cfg.get(
+            "sort_criteria"
+        )
+
+        if isinstance(
+            sort_criteria,
+            str,
+        ):
+            sort_criteria = [
+                value.strip()
+                for value
+                in sort_criteria.split(",")
+                if value.strip()
+            ]
+
+        if not sort_criteria:
+            sort_criteria = [
+                "cached",
+                "seeders",
+                "resolution",
+                "quality",
+            ]
+
+        sort_order = cfg.get(
+            "sort_order",
+            "desc",
+        )
+
+        allow_season_packs = (
+            cfg.get(
+                "allow_season_packs",
+                False,
+            )
+        )
+
+        results = sort_torrents(
+            results,
+            sort_criteria=sort_criteria,
+            sort_order=sort_order,
+            allow_season_packs=(
+                allow_season_packs
+            ),
+            cache_status_map=(
+                cache_status_map
+            ),
+        )
+
+        logger.info(
+            "AFTER SORTING: %d "
+            "using %s %s",
+            len(results),
+            sort_criteria,
+            sort_order,
+        )
+
+    except Exception:
+        logger.exception(
+            "Sorting failed"
+        )
+
+    # -----------------------------------------------------
+    # BUILD STREAMS
+    # -----------------------------------------------------
+
+    streams = []
+
+    base_url = _external_base_url(
+        request
+    )
+
+    logger.info(
+        "External base URL: %s",
+        base_url,
+    )
+
+    for torrent in results:
+        try:
+            info_hash = str(
+                getattr(
+                    torrent,
+                    "info_hash",
+                    "",
+                )
+            ).lower()
+
+            if not info_hash:
+                logger.warning(
+                    "Skipping torrent without "
+                    "info hash: %s",
+                    getattr(
+                        torrent,
+                        "title",
+                        "unknown",
+                    ),
+                )
+
+                continue
+
+            cache_status = (
+                cache_status_map.get(
+                    info_hash,
+                    CacheStatus.UNKNOWN,
+                )
+            )
+
+            cache_label = (
+                _cache_status_label(
+                    cache_status
+                )
+            )
+
+            quality = getattr(
+                torrent,
+                "quality",
+                None,
+            )
+
+            indexer = getattr(
+                torrent,
+                "indexer",
+                None,
+            )
+
+            seeders = getattr(
+                torrent,
+                "seeders",
+                None,
+            )
+
+            size_bytes = getattr(
+                torrent,
+                "size_bytes",
+                None,
+            )
+
+            # -------------------------------------------------
+            # STREAM NAME
+            # -------------------------------------------------
+
+            name_parts = [
+                "🧙 Cauldron"
+            ]
+
+            if indexer:
+                name_parts.append(
+                    str(indexer)
+                )
+
+            if quality:
+                name_parts.append(
+                    str(quality)
+                )
+
+            if debrid_client:
+                name_parts.append(
+                    cache_label
+                )
+            else:
+                name_parts.append(
+                    "P2P"
+                )
+
+            stream_name = (
+                " • ".join(
+                    name_parts
+                )
+            )
+
+            # -------------------------------------------------
+            # STREAM TITLE
+            # -------------------------------------------------
+
+            title_parts = [
+                str(
+                    getattr(
+                        torrent,
+                        "title",
+                        "Unknown",
+                    )
+                )
+            ]
+
+            if quality:
+                title_parts.append(
+                    f"Quality: {quality}"
+                )
+
+            if seeders is not None:
+                title_parts.append(
+                    f"Seeds: {seeders}"
+                )
+
+            if size_bytes:
+                try:
+                    size_gb = (
+                        float(size_bytes)
+                        / (1024 ** 3)
+                    )
+
+                    if size_gb >= 1:
+                        title_parts.append(
+                            f"Size: "
+                            f"{size_gb:.2f} GB"
+                        )
+
+                    else:
+                        size_mb = (
+                            float(size_bytes)
+                            / (1024 ** 2)
+                        )
+
+                        title_parts.append(
+                            f"Size: "
+                            f"{size_mb:.0f} MB"
+                        )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    pass
+
+            if debrid_client:
+                title_parts.append(
+                    f"Cache: {cache_label}"
+                )
+
+            # -------------------------------------------------
+            # PLAYBACK URL
+            # -------------------------------------------------
+
+            if debrid_client:
+                stream_url = (
+                    f"{base_url}/"
+                    f"{config}/playback/"
+                    f"{info_hash}"
+                )
+
+                stream_data = {
+                    "name": stream_name,
+                    "title": "\n".join(
+                        title_parts
+                    ),
+                    "url": stream_url,
+                    "behaviorHints": {
+                        "bingeGroup": (
+                            "cauldron"
+                        ),
+                    },
+                }
+
+                logger.info(
+                    "PLAYBACK URL: %s",
+                    stream_url,
+                )
+
+            else:
+                magnet = getattr(
+                    torrent,
+                    "magnet",
+                    None,
+                )
+
+                stream_data = {
+                    "name": stream_name,
+                    "title": "\n".join(
+                        title_parts
+                    ),
+                    "infoHash": info_hash,
+                    "sources": (
+                        [magnet]
+                        if magnet
+                        else []
+                    ),
+                    "behaviorHints": {
+                        "bingeGroup": (
+                            "cauldron"
+                        ),
+                    },
+                }
+
+            streams.append(
+                stream_data
+            )
+
+            logger.info(
+                "STREAM: %-30s | %s",
+                stream_name,
+                getattr(
+                    torrent,
+                    "title",
+                    "unknown",
+                ),
+            )
+
+        except Exception as exc:
+            logger.exception(
+                "Failed converting torrent "
+                "to stream: %s",
+                exc,
+            )
+
+    logger.info(
+        "RETURNING STREAMS: %d",
+        len(streams),
+    )
+
+    return {
+        "streams": streams
+    }
+
+
+# =========================================================
+# PLAYBACK
+# =========================================================
+
+
+@router.api_route(
+    "/{config}/playback/{info_hash}",
+    methods=["GET", "HEAD"],
+)
+async def playback(
+    request: Request,
+    config: str,
+    info_hash: str,
+):
+    """
+    Resolve a torrent hash through the configured
+    debrid provider and redirect to its actual
+    playback URL.
+
+    HEAD requests are handled as lightweight
+    availability checks and do not trigger
+    debrid resolution.
+
+    GET requests use an in-memory cache and per-hash
+    locking to prevent duplicate debrid transfers.
+    """
+
+    logger.info("")
+    logger.info(
+        "========================================"
+    )
+    logger.info(
+        "=== CAULDRON PLAYBACK REQUEST ==="
+    )
+    logger.info(
+        "METHOD: %s",
+        request.method,
+    )
+    logger.info(
+        "CONFIG: %s",
+        config,
+    )
+    logger.info(
+        "HASH: %s",
+        info_hash,
+    )
+    logger.info(
+        "========================================"
+    )
+
+    # -----------------------------------------------------
+    # LOAD CONFIG
+    # -----------------------------------------------------
+
+    cfg = _decode_config(
+        config
+    )
+
+    provider_str, api_key = (
+        _normalize_debrid_config(
+            cfg
+        )
+    )
+
+    if not provider_str:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No debrid provider "
+                "configured"
+            ),
+        )
+
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No debrid API key "
+                "configured"
+            ),
+        )
+
+    # -----------------------------------------------------
+    # NORMALIZE HASH
+    # -----------------------------------------------------
+
+    info_hash = (
+        info_hash
+        .strip()
+        .lower()
+        .replace(
+            "urn:btih:",
+            "",
+        )
+    )
+
+    if not info_hash:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid torrent hash",
+        )
+
+    # -----------------------------------------------------
+    # HEAD REQUEST
+    # -----------------------------------------------------
+    #
+    # Stremio/proxies can issue HEAD before GET.
+    #
+    # Do NOT create a transfer here.
+    # -----------------------------------------------------
+
+    if request.method == "HEAD":
+        logger.info(
+            "HEAD playback check accepted"
+        )
+
+        return Response(
+            status_code=200
+        )
+
+    # -----------------------------------------------------
+    # PLAYBACK CACHE KEY
+    # -----------------------------------------------------
+    #
+    # Include provider and config so different users
+    # cannot accidentally share a cached URL.
+    # -----------------------------------------------------
+
+    cache_key = (
+        f"{config}:"
+        f"{provider_str}:"
+        f"{info_hash}"
+    )
+
+    # -----------------------------------------------------
+    # CHECK CACHE
+    # -----------------------------------------------------
+
+    cached_url = _get_cached_playback_url(
+        cache_key
+    )
+
+    if cached_url:
+        logger.info(
+            "PLAYBACK CACHE HIT"
+        )
+
+        logger.info(
+            "Provider: %s",
+            provider_str,
+        )
+
+        logger.info(
+            "Hash: %s",
+            info_hash,
+        )
+
+        return RedirectResponse(
+            url=cached_url,
+            status_code=302,
+        )
+
+    logger.info(
+        "PLAYBACK CACHE MISS"
+    )
+
+    # -----------------------------------------------------
+    # PER-HASH LOCK
+    # -----------------------------------------------------
+    #
+    # This is important when Stremio sends several GETs
+    # at almost exactly the same time.
+    #
+    # Only the first request will contact Premiumize.
+    # The others wait and then use the newly cached URL.
+    # -----------------------------------------------------
+
+    playback_lock = await _get_playback_lock(
+        cache_key
+    )
+
+    async with playback_lock:
+
+        # -------------------------------------------------
+        # CHECK CACHE AGAIN
+        # -------------------------------------------------
+        #
+        # Another request may have populated the cache
+        # while we were waiting for the lock.
+        # -------------------------------------------------
+
+        cached_url = _get_cached_playback_url(
+            cache_key
+        )
+
+        if cached_url:
+            logger.info(
+                "PLAYBACK CACHE HIT AFTER LOCK"
+            )
+
+            return RedirectResponse(
+                url=cached_url,
+                status_code=302,
+            )
+
+        # -------------------------------------------------
+        # PROVIDER
+        # -------------------------------------------------
+
+        try:
+            provider = DebridProvider(
+                provider_str
+            )
+
+            debrid_client = (
+                get_debrid_client(
+                    provider,
+                    api_key,
+                )
+            )
+
+        except Exception as exc:
+            logger.exception(
+                "Unable to initialize "
+                "debrid provider"
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Unable to initialize "
+                    f"debrid provider: {exc}"
+                ),
+            )
+
+        # -------------------------------------------------
+        # MAGNET
+        # -------------------------------------------------
+
+        magnet = (
+            f"magnet:?xt=urn:btih:"
+            f"{info_hash}"
+        )
+
+        logger.info(
+            "Resolving magnet: %s",
+            magnet,
+        )
+
+        # -------------------------------------------------
+        # ADD MAGNET
+        # -------------------------------------------------
+
+        try:
+            torrent_id = (
+                await debrid_client.add_magnet(
+                    magnet
+                )
+            )
+
+            logger.info(
+                "Provider torrent ID: %s",
+                torrent_id,
+            )
+
+        except Exception as exc:
+            logger.exception(
+                "Failed to add magnet to %s",
+                provider_str,
+            )
+
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Failed to add torrent: "
+                    f"{exc}"
+                ),
+            )
+
+        # -------------------------------------------------
+        # RESOLVE PLAYBACK
+        # -------------------------------------------------
+
+        last_error = None
+
+        for attempt in range(15):
+            try:
+                resolved = (
+                    await debrid_client.get_playback_link(
+                        torrent_id
+                    )
+                )
+
+                playback_url = getattr(
+                    resolved,
+                    "playback_url",
+                    None,
+                )
+
+                if playback_url:
+                    logger.info(
+                        "PLAYBACK RESOLVED"
+                    )
+
+                    logger.info(
+                        "Provider: %s",
+                        provider_str,
+                    )
+
+                    logger.info(
+                        "File: %s",
+                        getattr(
+                            resolved,
+                            "file_name",
+                            "unknown",
+                        ),
+                    )
+
+                    # -----------------------------------------
+                    # CACHE RESOLVED URL
+                    # -----------------------------------------
+
+                    _cache_playback_url(
+                        cache_key,
+                        playback_url,
+                    )
+
+                    logger.info(
+                        "PLAYBACK URL CACHED "
+                        "FOR %d SECONDS",
+                        PLAYBACK_CACHE_TTL,
+                    )
+
+                    return RedirectResponse(
+                        url=playback_url,
+                        status_code=302,
+                    )
+
+                last_error = (
+                    "Provider returned "
+                    "no playback URL"
+                )
+
+            except Exception as exc:
+                last_error = exc
+
+                logger.info(
+                    "Playback not ready "
+                    "(attempt %d/15): %s",
+                    attempt + 1,
+                    exc,
+                )
+
+            if attempt < 14:
+                await asyncio.sleep(2)
+
+        logger.error(
+            "Playback resolution failed "
+            "after 30 seconds: %s",
+            last_error,
+        )
+
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                f"Playback was not ready on "
+                f"{provider_str}: "
+                f"{last_error}"
+            ),
         )

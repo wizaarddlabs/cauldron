@@ -2,6 +2,7 @@
 Public torrent site scrapers - no external services required.
 
 Sources:
+
 - The Pirate Bay (via apibay.org API)
 - 1337x (web scraping)
 - YTS (API)
@@ -12,7 +13,7 @@ Sources:
 import re
 import asyncio
 import time
-from urllib.parse import quote, urljoin
+from urllib.parse import quote
 from typing import Any
 
 import httpx
@@ -22,17 +23,21 @@ from app.config import get_settings
 from app.models import TorrentResult
 from app.scrapers.base import Scraper
 
-
 settings = get_settings()
 
 # Quality extraction patterns
+
 _QUALITY_PATTERN = re.compile(
     r"\b(2160p|4K|1080p|720p|480p|CAM|HDCAM|TS|WEBRip|BluRay|DVDRip)\b",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 # Size parsing patterns
-_SIZE_PATTERN = re.compile(r"(\d+\.?\d*)\s*(GB|MB|KB|TB)", re.IGNORECASE)
+
+_SIZE_PATTERN = re.compile(
+    r"(\d+\.?\d*)\s*(GB|MB|KB|TB)",
+    re.IGNORECASE,
+)
 
 
 class PublicScraper(Scraper):
@@ -45,7 +50,10 @@ class PublicScraper(Scraper):
 
     def __init__(self):
         self.timeout = settings.scrape_timeout_seconds
-        self._bitsearch_cache: dict[str, tuple[float, list[TorrentResult]]] = {}
+        self._bitsearch_cache: dict[
+            str,
+            tuple[float, list[TorrentResult]]
+        ] = {}
 
     async def search(
         self,
@@ -59,47 +67,76 @@ class PublicScraper(Scraper):
         """
         Search across all public sources and merge results.
         """
+
         all_results = []
 
-        # Build search queries
-        queries = self._build_queries(query, season, episode, media_type)
+        queries = self._build_queries(
+            query,
+            season,
+            episode,
+            media_type,
+        )
 
-        # YTS only indexes movies and EZTV only indexes TV. Calling EZTV for
-        # movies is unsafe: when it cannot resolve the IMDb ID it can return
-        # its current global listing, unrelated to the requested item.
         tasks = [
             self._search_tpb(queries, imdb_id),
             self._search_1337x(queries),
             self._search_nyaa(queries),
         ]
-        if settings.bitsearch_enabled:
-            # One query per request preserves Bitsearch's free API allowance.
-            tasks.append(self._search_bitsearch(queries[0]))
-        if settings.zilean_enabled and imdb_id:
-            tasks.append(self._search_zilean(imdb_id, season, episode))
-        if media_type == "movie":
-            tasks.append(self._search_yts(queries, imdb_id))
-        elif media_type == "series":
-            tasks.append(self._search_eztv(queries, imdb_id))
 
-        results_lists = await asyncio.gather(*tasks, return_exceptions=True)
+        if settings.bitsearch_enabled:
+            tasks.append(
+                self._search_bitsearch(queries[0])
+            )
+
+        if settings.zilean_enabled and imdb_id:
+            tasks.append(
+                self._search_zilean(
+                    imdb_id,
+                    season,
+                    episode,
+                )
+            )
+
+        if media_type == "movie":
+            tasks.append(
+                self._search_yts(
+                    queries,
+                    imdb_id,
+                )
+            )
+        elif media_type == "series":
+            tasks.append(
+                self._search_eztv(
+                    queries,
+                    imdb_id,
+                )
+            )
+
+        results_lists = await asyncio.gather(
+            *tasks,
+            return_exceptions=True,
+        )
 
         for results in results_lists:
             if isinstance(results, Exception):
                 continue
+
             if isinstance(results, list):
                 all_results.extend(results)
 
-        # Deduplicate by info_hash
         seen_hashes = set()
         unique_results = []
+
         for result in all_results:
             if result.info_hash not in seen_hashes:
                 seen_hashes.add(result.info_hash)
                 unique_results.append(result)
 
-        # Sort by seeders (no limit for unlimited streams)
-        unique_results.sort(key=lambda r: r.seeders or 0, reverse=True)
+        unique_results.sort(
+            key=lambda r: r.seeders or 0,
+            reverse=True,
+        )
+
         return unique_results
 
     def _build_queries(
@@ -110,23 +147,24 @@ class PublicScraper(Scraper):
         media_type: str | None = None,
     ) -> list[str]:
         """Build multiple query variations for better results."""
+
         queries = [query]
 
-        # TV episode formatting
         if media_type == "series" and season and episode:
             try:
                 s = int(season)
                 e = int(episode)
+
                 queries.extend([
                     f"{query} S{s:02d}E{e:02d}",
                     f"{query} Season {s} Episode {e}",
                     f"{query} {s}x{e}",
                 ])
+
             except ValueError:
                 pass
 
-
-        return list(dict.fromkeys(queries))  # Remove duplicates
+        return list(dict.fromkeys(queries))
 
     async def _search_zilean(
         self,
@@ -135,118 +173,252 @@ class PublicScraper(Scraper):
         episode: str | None = None,
     ) -> list[TorrentResult]:
         """Query an optional self-hosted Zilean DMM hash-list index."""
-        params = {"ImdbId": imdb_id}
+
+        params = {
+            "ImdbId": imdb_id,
+        }
+
         if season:
             params["Season"] = season
+
         if episode:
             params["Episode"] = episode
+
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=self.timeout
+            ) as client:
                 response = await client.get(
                     f"{settings.zilean_url.rstrip('/')}/dmm/filtered",
                     params=params,
                 )
+
                 response.raise_for_status()
+
             payload = response.json()
-            items = payload if isinstance(payload, list) else payload.get("results", [])
+
+            items = (
+                payload
+                if isinstance(payload, list)
+                else payload.get("results", [])
+            )
+
             results = []
+
             for item in items[:settings.zilean_max_results]:
                 if not isinstance(item, dict):
                     continue
-                info_hash = str(item.get("info_hash", "")).lower()
-                title = item.get("raw_title") or item.get("title") or ""
-                if not re.fullmatch(r"[a-f0-9]{40}", info_hash) or not isinstance(title, str) or not title:
+
+                info_hash = str(
+                    item.get("info_hash", "")
+                ).lower()
+
+                title = (
+                    item.get("raw_title")
+                    or item.get("title")
+                    or ""
+                )
+
+                if (
+                    not re.fullmatch(
+                        r"[a-f0-9]{40}",
+                        info_hash,
+                    )
+                    or not isinstance(title, str)
+                    or not title
+                ):
                     continue
+
                 raw_size = item.get("size")
+
                 try:
-                    size_bytes = int(raw_size) if raw_size is not None else None
+                    size_bytes = (
+                        int(raw_size)
+                        if raw_size is not None
+                        else None
+                    )
+
                 except (TypeError, ValueError):
-                    size_bytes = self._parse_size(str(raw_size))
-                results.append(TorrentResult(
-                    title=title,
-                    info_hash=info_hash,
-                    magnet=f"magnet:?xt=urn:btih:{info_hash}&dn={quote(title)}",
-                    size_bytes=size_bytes,
-                    seeders=None,
-                    leechers=None,
-                    source="zilean",
-                    indexer="Zilean",
-                    quality=item.get("resolution") or _extract_quality(title),
-                    codec=item.get("codec"),
-                ))
+                    size_bytes = self._parse_size(
+                        str(raw_size)
+                    )
+
+                results.append(
+                    TorrentResult(
+                        title=title,
+                        info_hash=info_hash,
+                        magnet=(
+                            f"magnet:?xt=urn:btih:"
+                            f"{info_hash}&dn={quote(title)}"
+                        ),
+                        size_bytes=size_bytes,
+                        seeders=None,
+                        leechers=None,
+                        source="zilean",
+                        indexer="Zilean",
+                        quality=(
+                            item.get("resolution")
+                            or _extract_quality(title)
+                        ),
+                        codec=item.get("codec"),
+                    )
+                )
+
             return results
+
         except (httpx.HTTPError, ValueError) as exc:
-            print(f"Zilean search failed: {exc}", flush=True)
+            print(
+                f"Zilean search failed: {exc}",
+                flush=True,
+            )
+
             return []
 
+    async def _search_bitsearch(
+        self,
+        query: str,
+    ) -> list[TorrentResult]:
+        """Search Bitsearch's API."""
 
-    async def _search_bitsearch(self, query: str) -> list[TorrentResult]:
-        """Search Bitsearch's API, using a small local cache to respect its quota."""
         cached = self._bitsearch_cache.get(query)
+
         now = time.monotonic()
-        if cached and now - cached[0] < settings.bitsearch_cache_ttl_seconds:
+
+        if (
+            cached
+            and now - cached[0]
+            < settings.bitsearch_cache_ttl_seconds
+        ):
             return cached[1]
 
-        headers = {"x-api-key": settings.bitsearch_api_key} if settings.bitsearch_api_key else {}
+        headers = (
+            {
+                "x-api-key": settings.bitsearch_api_key
+            }
+            if settings.bitsearch_api_key
+            else {}
+        )
+
         params = {
             "q": query,
-            "limit": min(settings.max_results_per_scraper, 100),
+            "limit": min(
+                settings.max_results_per_scraper,
+                100,
+            ),
             "sort": "seeders",
             "order": "desc",
         }
+
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-                response = await client.get(f"{settings.bitsearch_api_base}/search", params=params, headers=headers)
+            async with httpx.AsyncClient(
+                timeout=self.timeout,
+                follow_redirects=True,
+            ) as client:
+
+                response = await client.get(
+                    f"{settings.bitsearch_api_base}/search",
+                    params=params,
+                    headers=headers,
+                )
+
                 response.raise_for_status()
+
             payload = response.json()
+
             if not payload.get("success"):
                 return []
 
             results = []
+
             for item in payload.get("results", []):
-                info_hash = str(item.get("infohash", "")).lower()
+
+                info_hash = str(
+                    item.get("infohash", "")
+                ).lower()
+
                 title = item.get("title", "")
-                if not re.fullmatch(r"[a-f0-9]{40}", info_hash) or not isinstance(title, str) or not title:
+
+                if (
+                    not re.fullmatch(
+                        r"[a-f0-9]{40}",
+                        info_hash,
+                    )
+                    or not isinstance(title, str)
+                    or not title
+                ):
                     continue
+
                 try:
-                    seeders = int(item.get("seeders") or 0)
-                    leechers = int(item.get("leechers") or 0)
-                    size_bytes = int(item["size"]) if item.get("size") is not None else None
+                    seeders = int(
+                        item.get("seeders") or 0
+                    )
+
+                    leechers = int(
+                        item.get("leechers") or 0
+                    )
+
+                    size_bytes = (
+                        int(item["size"])
+                        if item.get("size") is not None
+                        else None
+                    )
+
                 except (TypeError, ValueError):
                     continue
-                results.append(TorrentResult(
-                    title=title,
-                    info_hash=info_hash,
-                    magnet=f"magnet:?xt=urn:btih:{info_hash}&dn={quote(title)}",
-                    size_bytes=size_bytes,
-                    seeders=seeders,
-                    leechers=leechers,
-                    source="bitsearch",
-                    indexer="Bitsearch",
-                    quality=_extract_quality(title),
-                ))
-            self._bitsearch_cache[query] = (now, results)
-            return results
-        except (httpx.HTTPError, ValueError) as exc:
-            print(f"Bitsearch search failed: {exc}", flush=True)
-            return []
 
+                results.append(
+                    TorrentResult(
+                        title=title,
+                        info_hash=info_hash,
+                        magnet=(
+                            f"magnet:?xt=urn:btih:"
+                            f"{info_hash}&dn={quote(title)}"
+                        ),
+                        size_bytes=size_bytes,
+                        seeders=seeders,
+                        leechers=leechers,
+                        source="bitsearch",
+                        indexer="Bitsearch",
+                        quality=_extract_quality(title),
+                    )
+                )
+
+            self._bitsearch_cache[query] = (
+                now,
+                results,
+            )
+
+            return results
+
+        except (httpx.HTTPError, ValueError) as exc:
+            print(
+                f"Bitsearch search failed: {exc}",
+                flush=True,
+            )
+
+            return []
 
     async def _search_tpb(
         self,
         queries: list[str],
         imdb_id: str | None = None,
     ) -> list[TorrentResult]:
-        """Search The Pirate Bay via apibay.org API."""
+
         results = []
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                # Only try the first 5 queries to avoid excessive requests
+            async with httpx.AsyncClient(
+                timeout=self.timeout
+            ) as client:
+
                 for query in queries[:5]:
+
                     try:
-                        # TPB API via apibay.org
-                        url = f"https://apibay.org/q.php?q={quote(query)}"
+                        url = (
+                            "https://apibay.org/q.php"
+                            f"?q={quote(query)}"
+                        )
+
                         resp = await client.get(url)
 
                         if resp.status_code != 200:
@@ -254,38 +426,67 @@ class PublicScraper(Scraper):
 
                         data = resp.json()
 
-                        if not isinstance(data, list) or len(data) == 0:
+                        if (
+                            not isinstance(data, list)
+                            or len(data) == 0
+                        ):
                             continue
 
                         for item in data:
+
                             if not isinstance(item, dict):
                                 continue
 
-                            info_hash = item.get("info_hash")
+                            info_hash = item.get(
+                                "info_hash"
+                            )
+
                             if not info_hash:
                                 continue
 
-                            # Parse seeders/leechers
                             try:
-                                seeders = int(item.get("seeders", 0))
-                            except (ValueError, TypeError):
+                                seeders = int(
+                                    item.get(
+                                        "seeders",
+                                        0,
+                                    )
+                                )
+
+                            except (
+                                ValueError,
+                                TypeError,
+                            ):
                                 seeders = 0
 
-                            # Parse size
-                            size_bytes = self._parse_size(item.get("size", ""))
+                            size_bytes = self._parse_size(
+                                item.get("size", "")
+                            )
 
-                            magnet = f"magnet:?xt=urn:btih:{info_hash}&dn={quote(item.get('name', ''))}"
+                            title = item.get(
+                                "name",
+                                "",
+                            )
 
-                            results.append(TorrentResult(
-                                title=item.get("name", ""),
-                                info_hash=info_hash.lower(),
-                                magnet=magnet,
-                                size_bytes=size_bytes,
-                                seeders=seeders,
-                                source="thepiratebay",
-                                indexer="ThePirateBay",
-                                quality=_extract_quality(item.get("name", "")),
-                            ))
+                            magnet = (
+                                "magnet:?xt=urn:btih:"
+                                f"{info_hash}"
+                                f"&dn={quote(title)}"
+                            )
+
+                            results.append(
+                                TorrentResult(
+                                    title=title,
+                                    info_hash=info_hash.lower(),
+                                    magnet=magnet,
+                                    size_bytes=size_bytes,
+                                    seeders=seeders,
+                                    source="thepiratebay",
+                                    indexer="ThePirateBay",
+                                    quality=_extract_quality(
+                                        title
+                                    ),
+                                )
+                            )
 
                     except Exception:
                         continue
@@ -295,72 +496,116 @@ class PublicScraper(Scraper):
 
         return results
 
-    async def _search_1337x(self, queries: list[str]) -> list[TorrentResult]:
-        """Search 1337x via web scraping."""
+    async def _search_1337x(
+        self,
+        queries: list[str],
+    ) -> list[TorrentResult]:
+
         results = []
 
         try:
             async with httpx.AsyncClient(
                 timeout=self.timeout,
-                headers={"User-Agent": "Mozilla/5.0"}
+                headers={
+                    "User-Agent": "Mozilla/5.0"
+                },
             ) as client:
-                # Only try the first 3 queries to avoid rate limiting
+
                 for query in queries[:3]:
+
                     try:
-                        # 1337x search page
-                        url = f"https://www.1337xx.to/search/{quote(query)}/1/"
+                        url = (
+                            "https://www.1337xx.to/search/"
+                            f"{quote(query)}/1/"
+                        )
+
                         resp = await client.get(url)
 
                         if resp.status_code != 200:
                             continue
 
-                        # Parse HTML for torrent links
-                        # Look for torrent rows in the search results
                         html = resp.text
 
-                        # Extract torrent links and info
-                        # This is a simplified parser - 1337x structure may change
                         pattern = re.compile(
                             r'<a href="/torrent/(\d+)/([^/]+)/?".*?'
                             r'<span class="seeds">(\d+)</span>.*?'
                             r'<span class="leeches">(\d+)</span>.*?'
                             r'<span class="size">(\d+\.?\d*\s*[GMK]B)</span>',
-                            re.DOTALL | re.IGNORECASE
+                            re.DOTALL | re.IGNORECASE,
                         )
 
                         matches = pattern.findall(html)
 
                         for match in matches:
-                            torrent_id, slug, seeders, leechers, size = match
 
-                            # Get the magnet link from the torrent page
+                            (
+                                torrent_id,
+                                slug,
+                                seeders,
+                                leechers,
+                                size,
+                            ) = match
+
                             try:
-                                torrent_url = f"https://www.1337xx.to/torrent/{torrent_id}/{slug}/"
-                                torrent_resp = await client.get(
-                                    torrent_url,
-                                    headers={"User-Agent": "Mozilla/5.0"}
+                                torrent_url = (
+                                    "https://www.1337xx.to/torrent/"
+                                    f"{torrent_id}/{slug}/"
                                 )
 
-                                if torrent_resp.status_code == 200:
-                                    magnet_match = re.search(
-                                        r'magnet:\?xt=urn:btih:([a-fA-F0-9]{40})',
-                                        torrent_resp.text
+                                torrent_resp = await client.get(
+                                    torrent_url,
+                                    headers={
+                                        "User-Agent":
+                                            "Mozilla/5.0"
+                                    },
+                                )
+
+                                if torrent_resp.status_code != 200:
+                                    continue
+
+                                magnet_match = re.search(
+                                    r'magnet:\?xt=urn:btih:'
+                                    r'([a-fA-F0-9]{40})',
+                                    torrent_resp.text,
+                                )
+
+                                if not magnet_match:
+                                    continue
+
+                                info_hash = (
+                                    magnet_match
+                                    .group(1)
+                                    .lower()
+                                )
+
+                                magnet = (
+                                    "magnet:?xt=urn:btih:"
+                                    f"{info_hash}"
+                                )
+
+                                results.append(
+                                    TorrentResult(
+                                        title=slug.replace(
+                                            "-",
+                                            " ",
+                                        ),
+                                        info_hash=info_hash,
+                                        magnet=magnet,
+                                        size_bytes=self._parse_size(
+                                            size
+                                        ),
+                                        seeders=(
+                                            int(seeders)
+                                            if seeders.isdigit()
+                                            else 0
+                                        ),
+                                        source="1337x",
+                                        indexer="1337x",
+                                        quality=_extract_quality(
+                                            slug
+                                        ),
                                     )
-
-                                    if magnet_match:
-                                        info_hash = magnet_match.group(1).lower()
-                                        magnet = f"magnet:?xt=urn:btih:{info_hash}"
-
-                                        results.append(TorrentResult(
-                                            title=slug.replace("-", " "),
-                                            info_hash=info_hash,
-                                            magnet=magnet,
-                                            size_bytes=self._parse_size(size),
-                                            seeders=int(seeders) if seeders.isdigit() else 0,
-                                            source="1337x",
-                                            indexer="1337x",
-                                            quality=_extract_quality(slug),
-                                        ))
+                                )
 
                             except Exception:
                                 continue
@@ -378,20 +623,31 @@ class PublicScraper(Scraper):
         queries: list[str],
         imdb_id: str | None = None,
     ) -> list[TorrentResult]:
-        """Search YTS via their API."""
+
         results = []
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                # YTS API endpoint
-                base_url = "https://yts.mx/api/v2/list_movies.json"
+            async with httpx.AsyncClient(
+                timeout=self.timeout
+            ) as client:
 
-                # Only try the first 3 queries for YTS
+                base_url = (
+                    "https://yts.mx/api/v2/"
+                    "list_movies.json"
+                )
+
                 for query in queries[:3]:
-                    try:
-                        params = {"query_term": query, "limit": 20}
 
-                        resp = await client.get(base_url, params=params)
+                    try:
+                        params = {
+                            "query_term": query,
+                            "limit": 20,
+                        }
+
+                        resp = await client.get(
+                            base_url,
+                            params=params,
+                        )
 
                         if resp.status_code != 200:
                             continue
@@ -401,32 +657,71 @@ class PublicScraper(Scraper):
                         if data.get("status") != "ok":
                             continue
 
-                        movies = data.get("data", {}).get("movies", [])
+                        movies = (
+                            data.get("data", {})
+                            .get("movies", [])
+                        )
 
                         for movie in movies:
-                            torrents = movie.get("torrents", [])
+
+                            torrents = movie.get(
+                                "torrents",
+                                [],
+                            )
 
                             for torrent in torrents:
-                                info_hash = torrent.get("hash")
+
+                                info_hash = torrent.get(
+                                    "hash"
+                                )
+
                                 if not info_hash:
                                     continue
 
-                                quality = torrent.get("quality", "")
-                                size = torrent.get("size", "")
-                                seeders = torrent.get("seeds", 0)
+                                quality = torrent.get(
+                                    "quality",
+                                    "",
+                                )
 
-                                magnet = f"magnet:?xt=urn:btih:{info_hash}"
+                                size = torrent.get(
+                                    "size",
+                                    "",
+                                )
 
-                                results.append(TorrentResult(
-                                    title=movie.get("title_long", movie.get("title", "")),
-                                    info_hash=info_hash.lower(),
-                                    magnet=magnet,
-                                    size_bytes=self._parse_size(size),
-                                    seeders=int(seeders) if seeders else 0,
-                                    source="yts",
-                                    indexer="YTS",
-                                    quality=quality,
-                                ))
+                                seeders = torrent.get(
+                                    "seeds",
+                                    0,
+                                )
+
+                                magnet = (
+                                    "magnet:?xt=urn:btih:"
+                                    f"{info_hash}"
+                                )
+
+                                results.append(
+                                    TorrentResult(
+                                        title=movie.get(
+                                            "title_long",
+                                            movie.get(
+                                                "title",
+                                                "",
+                                            ),
+                                        ),
+                                        info_hash=info_hash.lower(),
+                                        magnet=magnet,
+                                        size_bytes=self._parse_size(
+                                            size
+                                        ),
+                                        seeders=(
+                                            int(seeders)
+                                            if seeders
+                                            else 0
+                                        ),
+                                        source="yts",
+                                        indexer="YTS",
+                                        quality=quality,
+                                    )
+                                )
 
                     except Exception:
                         continue
@@ -440,83 +735,170 @@ class PublicScraper(Scraper):
         self,
         queries: list[str],
     ) -> list[TorrentResult]:
-        """Search Nyaa.si for anime torrents."""
-        print("Starting Nyaa search...", flush=True)
+
+        print(
+            "Starting Nyaa search...",
+            flush=True,
+        )
+
         results = []
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                # Only try the first 3 queries for Nyaa
-                for query in queries[:3]:
-                    try:
-                        print(f"Nyaa searching for: {query}", flush=True)
-                        # Nyaa.si search URL
-                        url = f"https://nyaa.si/?q={quote(query)}&s=seeders&o=desc"
-                        headers = {"User-Agent": "Mozilla/5.0"}
+            async with httpx.AsyncClient(
+                timeout=self.timeout
+            ) as client:
 
-                        resp = await client.get(url, headers=headers)
-                        print(f"Nyaa response status: {resp.status_code}", flush=True)
+                for query in queries[:3]:
+
+                    try:
+                        print(
+                            f"Nyaa searching for: {query}",
+                            flush=True,
+                        )
+
+                        url = (
+                            "https://nyaa.si/"
+                            f"?q={quote(query)}"
+                            "&s=seeders&o=desc"
+                        )
+
+                        headers = {
+                            "User-Agent": "Mozilla/5.0"
+                        }
+
+                        resp = await client.get(
+                            url,
+                            headers=headers,
+                        )
+
+                        print(
+                            f"Nyaa response status: "
+                            f"{resp.status_code}",
+                            flush=True,
+                        )
 
                         if resp.status_code != 200:
                             continue
 
-                        soup = BeautifulSoup(resp.text, "html.parser")
+                        soup = BeautifulSoup(
+                            resp.text,
+                            "html.parser",
+                        )
 
-                        # Find torrent rows - Nyaa uses tbody structure
-                        rows = soup.select("tbody tr")
-                        print(f"Nyaa found {len(rows)} rows", flush=True)
+                        rows = soup.select(
+                            "tbody tr"
+                        )
 
-                        for row in rows[1:]:  # Skip header row
+                        print(
+                            f"Nyaa found {len(rows)} rows",
+                            flush=True,
+                        )
+
+                        for row in rows[1:]:
+
                             try:
                                 cols = row.select("td")
+
                                 if len(cols) < 4:
                                     continue
 
-                                # Extract magnet link
-                                magnet_link = cols[2].select_one("a[href^='magnet:']")
+                                magnet_link = (
+                                    cols[2].select_one(
+                                        "a[href^='magnet:']"
+                                    )
+                                )
+
                                 if not magnet_link:
                                     continue
 
-                                magnet = magnet_link["href"]
+                                magnet = magnet_link[
+                                    "href"
+                                ]
+
                                 magnet_match = re.search(
-                                    r'magnet:\?xt=urn:btih:([a-fA-F0-9]{40})',
-                                    magnet
+                                    r'magnet:\?xt=urn:btih:'
+                                    r'([a-fA-F0-9]{40})',
+                                    magnet,
                                 )
 
                                 if not magnet_match:
                                     continue
 
-                                info_hash = magnet_match.group(1).lower()
+                                info_hash = (
+                                    magnet_match
+                                    .group(1)
+                                    .lower()
+                                )
 
-                                # Extract title
-                                title_link = cols[1].select_one("a")
-                                title = title_link.text.strip() if title_link else ""
+                                title_link = (
+                                    cols[1].select_one(
+                                        "a"
+                                    )
+                                )
 
-                                # Extract seeders and leechers
+                                title = (
+                                    title_link.text.strip()
+                                    if title_link
+                                    else ""
+                                )
+
                                 seeders = 0
                                 leechers = 0
+
                                 try:
-                                    seeders = int(cols[3].text.strip())
-                                    leechers = int(cols[4].text.strip())
-                                except (ValueError, AttributeError):
+                                    seeders = int(
+                                        cols[3]
+                                        .text
+                                        .strip()
+                                    )
+
+                                    leechers = int(
+                                        cols[4]
+                                        .text
+                                        .strip()
+                                    )
+
+                                except (
+                                    ValueError,
+                                    AttributeError,
+                                ):
                                     pass
 
-                                # Extract size
-                                size_str = cols[1].text.strip()
-                                size_match = re.search(r'\d+\.?\d*\s*[GMK]B', size_str, re.IGNORECASE)
-                                size = size_match.group(0) if size_match else ""
+                                size_str = (
+                                    cols[1]
+                                    .text
+                                    .strip()
+                                )
 
-                                results.append(TorrentResult(
-                                    title=title,
-                                    info_hash=info_hash,
-                                    magnet=magnet,
-                                    size_bytes=self._parse_size(size),
-                                    seeders=seeders,
-                                    leechers=leechers,
-                                    source="nyaa",
-                                    indexer="Nyaa",
-                                    quality=_extract_quality(title),
-                                ))
+                                size_match = re.search(
+                                    r'\d+\.?\d*\s*[GMK]B',
+                                    size_str,
+                                    re.IGNORECASE,
+                                )
+
+                                size = (
+                                    size_match.group(0)
+                                    if size_match
+                                    else ""
+                                )
+
+                                results.append(
+                                    TorrentResult(
+                                        title=title,
+                                        info_hash=info_hash,
+                                        magnet=magnet,
+                                        size_bytes=self._parse_size(
+                                            size
+                                        ),
+                                        seeders=seeders,
+                                        leechers=leechers,
+                                        source="nyaa",
+                                        indexer="Nyaa",
+                                        quality=_extract_quality(
+                                            title
+                                        ),
+                                    )
+                                )
 
                             except Exception:
                                 continue
@@ -530,26 +912,41 @@ class PublicScraper(Scraper):
         return results
 
     @staticmethod
-    def _parse_size(size_str: str) -> int | None:
+    def _parse_size(
+        size_str: str,
+    ) -> int | None:
         """Convert a human-readable torrent size to bytes."""
+
         if not size_str:
             return None
 
-        match = _SIZE_PATTERN.search(str(size_str))
+        match = _SIZE_PATTERN.search(
+            str(size_str)
+        )
+
         if not match:
             return None
 
         try:
             value = float(match.group(1))
             unit = match.group(2).upper()
+
             multipliers = {
                 "KB": 1024,
                 "MB": 1024 ** 2,
                 "GB": 1024 ** 3,
                 "TB": 1024 ** 4,
             }
-            return int(value * multipliers[unit])
-        except (ValueError, TypeError, KeyError):
+
+            return int(
+                value * multipliers[unit]
+            )
+
+        except (
+            ValueError,
+            TypeError,
+            KeyError,
+        ):
             return None
 
     async def _search_eztv(
@@ -557,61 +954,120 @@ class PublicScraper(Scraper):
         queries: list[str],
         imdb_id: str | None = None,
     ) -> list[TorrentResult]:
-        """Search EZTV for TV show torrents using their API."""
+
         results = []
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                base_url = "https://eztvx.to/api/get-torrents"
+            async with httpx.AsyncClient(
+                timeout=self.timeout
+            ) as client:
+
+                base_url = (
+                    "https://eztvx.to/api/get-torrents"
+                )
 
                 if imdb_id:
+
                     try:
-                        params = {"imdb_id": imdb_id, "limit": 50}
-                        resp = await client.get(base_url, params=params)
+                        params = {
+                            "imdb_id": imdb_id,
+                            "limit": 50,
+                        }
+
+                        resp = await client.get(
+                            base_url,
+                            params=params,
+                        )
 
                         if resp.status_code == 200:
+
                             data = resp.json()
-                            torrents = data.get("torrents", [])
+
+                            torrents = data.get(
+                                "torrents",
+                                [],
+                            )
 
                             for torrent in torrents:
-                                try:
-                                    title = torrent.get("title", "")
-                                    magnet = torrent.get("magnet_url", "")
-                                    hash_str = torrent.get("hash", "")
-                                    size_bytes = torrent.get("size_bytes")
-                                    seeds = torrent.get("seeds", 0)
-                                    peers = torrent.get("peers", 0)
 
-                                    if not magnet or not hash_str:
+                                try:
+                                    title = torrent.get(
+                                        "title",
+                                        "",
+                                    )
+
+                                    magnet = torrent.get(
+                                        "magnet_url",
+                                        "",
+                                    )
+
+                                    hash_str = torrent.get(
+                                        "hash",
+                                        "",
+                                    )
+
+                                    size_bytes = torrent.get(
+                                        "size_bytes"
+                                    )
+
+                                    seeds = torrent.get(
+                                        "seeds",
+                                        0,
+                                    )
+
+                                    peers = torrent.get(
+                                        "peers",
+                                        0,
+                                    )
+
+                                    if (
+                                        not magnet
+                                        or not hash_str
+                                    ):
                                         continue
 
                                     magnet_match = re.search(
-                                        r"magnet:\?xt=urn:btih:([a-fA-F0-9]{40})",
-                                        magnet
+                                        r"magnet:\?xt=urn:btih:"
+                                        r"([a-fA-F0-9]{40})",
+                                        magnet,
                                     )
 
                                     if not magnet_match:
                                         continue
 
-                                    info_hash = magnet_match.group(1).lower()
+                                    info_hash = (
+                                        magnet_match
+                                        .group(1)
+                                        .lower()
+                                    )
 
-                                    if isinstance(size_bytes, str):
+                                    if isinstance(
+                                        size_bytes,
+                                        str,
+                                    ):
                                         try:
-                                            size_bytes = int(size_bytes)
+                                            size_bytes = int(
+                                                size_bytes
+                                            )
+
                                         except ValueError:
                                             size_bytes = None
 
-                                    results.append(TorrentResult(
-                                        title=title,
-                                        info_hash=info_hash,
-                                        magnet=magnet,
-                                        size_bytes=size_bytes,
-                                        seeders=seeds,
-                                        leechers=peers,
-                                        source="eztv",
-                                        indexer="EZTV",
-                                        quality=_extract_quality(title),
-                                    ))
+                                    results.append(
+                                        TorrentResult(
+                                            title=title,
+                                            info_hash=info_hash,
+                                            magnet=magnet,
+                                            size_bytes=size_bytes,
+                                            seeders=seeds,
+                                            leechers=peers,
+                                            source="eztv",
+                                            indexer="EZTV",
+                                            quality=_extract_quality(
+                                                title
+                                            ),
+                                        )
+                                    )
 
                                 except Exception:
                                     continue
@@ -620,61 +1076,125 @@ class PublicScraper(Scraper):
                         pass
 
                 if not results:
+
                     for query in queries[:2]:
+
                         try:
-                            params = {"limit": 50}
-                            resp = await client.get(base_url, params=params)
+                            params = {
+                                "limit": 50
+                            }
+
+                            resp = await client.get(
+                                base_url,
+                                params=params,
+                            )
 
                             if resp.status_code != 200:
                                 continue
 
                             data = resp.json()
-                            torrents = data.get("torrents", [])
+
+                            torrents = data.get(
+                                "torrents",
+                                [],
+                            )
 
                             for torrent in torrents:
-                                try:
-                                    title = torrent.get("title", "").lower()
-                                    query_lower = query.lower()
 
-                                    if query_lower not in title:
+                                try:
+                                    title = torrent.get(
+                                        "title",
+                                        "",
+                                    ).lower()
+
+                                    query_lower = (
+                                        query.lower()
+                                    )
+
+                                    if (
+                                        query_lower
+                                        not in title
+                                    ):
                                         continue
 
-                                    magnet = torrent.get("magnet_url", "")
-                                    hash_str = torrent.get("hash", "")
-                                    size_bytes = torrent.get("size_bytes")
-                                    seeds = torrent.get("seeds", 0)
-                                    peers = torrent.get("peers", 0)
+                                    magnet = torrent.get(
+                                        "magnet_url",
+                                        "",
+                                    )
 
-                                    if not magnet or not hash_str:
+                                    hash_str = torrent.get(
+                                        "hash",
+                                        "",
+                                    )
+
+                                    size_bytes = torrent.get(
+                                        "size_bytes"
+                                    )
+
+                                    seeds = torrent.get(
+                                        "seeds",
+                                        0,
+                                    )
+
+                                    peers = torrent.get(
+                                        "peers",
+                                        0,
+                                    )
+
+                                    if (
+                                        not magnet
+                                        or not hash_str
+                                    ):
                                         continue
 
                                     magnet_match = re.search(
-                                        r"magnet:\?xt=urn:btih:([a-fA-F0-9]{40})",
-                                        magnet
+                                        r"magnet:\?xt=urn:btih:"
+                                        r"([a-fA-F0-9]{40})",
+                                        magnet,
                                     )
 
                                     if not magnet_match:
                                         continue
 
-                                    info_hash = magnet_match.group(1).lower()
+                                    info_hash = (
+                                        magnet_match
+                                        .group(1)
+                                        .lower()
+                                    )
 
-                                    if isinstance(size_bytes, str):
+                                    if isinstance(
+                                        size_bytes,
+                                        str,
+                                    ):
                                         try:
-                                            size_bytes = int(size_bytes)
+                                            size_bytes = int(
+                                                size_bytes
+                                            )
+
                                         except ValueError:
                                             size_bytes = None
 
-                                    results.append(TorrentResult(
-                                        title=torrent.get("title", ""),
-                                        info_hash=info_hash,
-                                        magnet=magnet,
-                                        size_bytes=size_bytes,
-                                        seeders=seeds,
-                                        leechers=peers,
-                                        source="eztv",
-                                        indexer="EZTV",
-                                        quality=_extract_quality(torrent.get("title", "")),
-                                    ))
+                                    results.append(
+                                        TorrentResult(
+                                            title=torrent.get(
+                                                "title",
+                                                "",
+                                            ),
+                                            info_hash=info_hash,
+                                            magnet=magnet,
+                                            size_bytes=size_bytes,
+                                            seeders=seeds,
+                                            leechers=peers,
+                                            source="eztv",
+                                            indexer="EZTV",
+                                            quality=_extract_quality(
+                                                torrent.get(
+                                                    "title",
+                                                    "",
+                                                )
+                                            ),
+                                        )
+                                    )
 
                                 except Exception:
                                     continue
@@ -686,12 +1206,18 @@ class PublicScraper(Scraper):
             pass
 
         return results
-def _extract_quality(title: str) -> str | None:
+
+
+def _extract_quality(
+    title: str,
+) -> str | None:
     """Extract quality from torrent title."""
+
     if not title:
         return None
 
     match = _QUALITY_PATTERN.search(title)
+
     if match:
         return match.group(1).upper()
 

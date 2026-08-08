@@ -46,8 +46,16 @@ class TorrinClient(DebridClient):
     # CACHE CHECK
     # ---------------------------------------------------------
     # POST /api/availability  { "hashes": [...] } -> availability keyed
-    # by hash. Real shape confirmed from a live response:
-    #   { "<hash>": { "available": bool, "files": [...] | null }, ... }
+    # by hash. Using the native /api surface (rather than the RD
+    # instantAvailability/{hashes} path or the StremThru
+    # /v0/store/magnets/check GET) because it takes a JSON body, so it
+    # doesn't run into URL-length limits when checking dozens of hashes
+    # at once, which this aggregator routinely does.
+    #
+    # NOTE: the OpenAPI spec doesn't pin down the exact response shape
+    # beyond "object, availability keyed by hash" — the parsing below
+    # tries the common shapes. Check the debug print below against a
+    # live response and tighten this once you've seen the real payload.
 
     async def check_cache(
         self,
@@ -103,12 +111,6 @@ class TorrinClient(DebridClient):
                 return None
 
             if isinstance(value, dict):
-                if "available" in value:
-                    return (
-                        CacheStatus.CACHED
-                        if value.get("available")
-                        else CacheStatus.NOT_CACHED
-                    )
                 cached = (
                     value.get("cached")
                     if "cached" in value
@@ -117,6 +119,7 @@ class TorrinClient(DebridClient):
                 return _status_from_value(cached)
 
             if isinstance(value, list):
+                # e.g. RD-style {"rd": [...]}
                 return (
                     CacheStatus.CACHED
                     if value
@@ -125,6 +128,7 @@ class TorrinClient(DebridClient):
 
             return None
 
+        # Response keyed directly by hash: {hash: {...}} or {hash: bool/str}
         if isinstance(data, dict):
             for key, value in data.items():
                 key_lower = str(key).lower()
@@ -133,6 +137,7 @@ class TorrinClient(DebridClient):
                     if status is not None:
                         result[key_lower] = status
 
+            # Response wrapped in results/data/items list
             entries = []
             for wrapper_key in ("results", "data", "items"):
                 wrapped = data.get(wrapper_key)
@@ -158,7 +163,11 @@ class TorrinClient(DebridClient):
 
                 hash_value = str(hash_value).strip().lower()
 
-                status = _status_from_value(entry)
+                status = _status_from_value(
+                    entry.get("cached")
+                    if "cached" in entry
+                    else entry.get("status")
+                )
 
                 if status is not None:
                     result[hash_value] = status
@@ -179,7 +188,11 @@ class TorrinClient(DebridClient):
 
                 hash_value = str(hash_value).strip().lower()
 
-                status = _status_from_value(entry)
+                status = _status_from_value(
+                    entry.get("cached")
+                    if "cached" in entry
+                    else entry.get("status")
+                )
 
                 if status is not None:
                     result[hash_value] = status
@@ -219,7 +232,7 @@ class TorrinClient(DebridClient):
             response = await client.post(
                 url,
                 headers=self._headers,
-                data={"magnet": magnet},
+                data={"magnet": magnet},  # form body, per RD spec
             )
 
             response.raise_for_status()
@@ -232,6 +245,8 @@ class TorrinClient(DebridClient):
     # LIST FILES
     # ---------------------------------------------------------
     # GET /rest/1.0/torrents/info/{id}
+    # Returns RD-shaped `files` (id/path/bytes/selected) and `links`
+    # (torrin:// refs, parallel array to selected files).
 
     async def list_files(
         self,
@@ -295,7 +310,9 @@ class TorrinClient(DebridClient):
     # ---------------------------------------------------------
     # GET /rest/1.0/torrents/info/{id} for status + links, then
     # POST /rest/1.0/unrestrict/link to turn a torrin:// link into a
-    # signed, playable HTTPS URL (valid 24h).
+    # signed, playable HTTPS URL (valid 24h). Torrin doesn't report a
+    # real filesize on unrestrict (always 0) — pull size from the
+    # torrent's file entry if you need it.
 
     async def get_playback_link(
         self,
@@ -394,10 +411,12 @@ class TorrinScraper:
     ) -> list:
         """
         GET /api/search — the endpoint takes imdb / title / year /
-        season / episode, not a free-text `query` param.
+        season / episode. It does NOT take a free-text `query` param,
+        which is what was causing every call to 400.
 
-        Requires an active Torrin plan; a 403 here means the account
-        doesn't have one, not a code bug.
+        Requires an active Torrin plan (monthly/yearly/lifetime); a
+        403 here means the account itself doesn't have one, not a
+        code bug.
         """
 
         api_key = getattr(

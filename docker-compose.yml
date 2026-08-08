@@ -19,7 +19,7 @@ services:
       - ADDON_URL=https://cauldron.forthewizards.uk
       - ZILEAN_ENABLED=true
       - ZILEAN_URL=${ZILEAN_URL:-http://zilean:8181}
-
+      - TORRIN_API_KEY=${TORRIN_API_KEY}
     restart: unless-stopped
     networks:
       - cauldron-network
