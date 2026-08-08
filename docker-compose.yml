@@ -16,11 +16,16 @@ services:
 
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - ADDON_URL=${ADDON_URL:-http://localhost:8000}
-      - ZILEAN_ENABLED=${ZILEAN_ENABLED:-false}
+      - ADDON_URL=https://cauldron.forthewizards.uk
+      - ZILEAN_ENABLED=true
       - ZILEAN_URL=${ZILEAN_URL:-http://zilean:8181}
 
     restart: unless-stopped
+    networks:
+      - cauldron-network
+    depends_on:
+      - redis
+      - zilean
 
 
   redis:
@@ -34,6 +39,10 @@ services:
       sh -c "redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_EVICTION_POLICY:-allkeys-lru}"
 
     restart: unless-stopped
+    networks:
+      - cauldron-network
+    volumes:
+      - redis-data:/data
 
   zilean:
     image: ipromknight/zilean:latest
@@ -48,6 +57,8 @@ services:
       Zilean__Dmm__ImportBatched: "true"
       Zilean__Dmm__MaxFilteredResults: "200"
       Zilean__Imdb__EnableImportMatching: "true"
+    networks:
+      - cauldron-network
     depends_on:
       zilean-postgres:
         condition: service_healthy
@@ -64,6 +75,8 @@ services:
       POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
     volumes:
       - ./data/zilean-postgres:/var/lib/postgresql/data
+    networks:
+      - cauldron-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zilean -d zilean"]
       interval: 10s
@@ -71,4 +84,9 @@ services:
       retries: 10
 
 volumes:
+  redis-data:
   zilean-postgres-data:
+
+networks:
+  cauldron-network:
+    driver: bridge

@@ -88,6 +88,11 @@ def sort_torrents(
     """
     Sort torrents based on user preferences with multi-level sorting.
     
+    Uses Comet's two-pass approach for cache prioritization:
+    - If "cached" is in criteria and sort_order is "desc", cached torrents are selected first
+    - Then uncached torrents are selected in the remaining order
+    - This ensures cached streams always appear at the top
+    
     Args:
         torrents: List of torrents to sort
         sort_criteria: List of sort fields in priority order (e.g., ["seeders", "resolution", "quality"])
@@ -102,6 +107,52 @@ def sort_torrents(
     if not allow_season_packs:
         torrents = [t for t in torrents if not is_season_pack(t.title)]
     
+    # Check if we should prioritize cached streams (Comet's approach)
+    prioritize_cached = (
+        "cached" in sort_criteria 
+        and sort_order == "desc" 
+        and cache_status_map
+    )
+
+    if prioritize_cached:
+        # Two-pass selection: cached first, then uncached
+        cached_torrents = []
+        uncached_torrents = []
+        
+        for torrent in torrents:
+            cache_status = cache_status_map.get(torrent.info_hash)
+            if not cache_status:
+                cache_status = cache_status_map.get(torrent.info_hash.lower())
+            
+            # Check if cached
+            cache_str = str(cache_status).lower() if cache_status else ""
+            is_cached = "cached" in cache_str
+            
+            if is_cached:
+                cached_torrents.append(torrent)
+            else:
+                uncached_torrents.append(torrent)
+        
+        # Sort each group by remaining criteria (excluding "cached")
+        remaining_criteria = [c for c in sort_criteria if c != "cached"]
+        if remaining_criteria:
+            cached_torrents = _sort_by_criteria(cached_torrents, remaining_criteria, sort_order)
+            uncached_torrents = _sort_by_criteria(uncached_torrents, remaining_criteria, sort_order)
+        
+        # Combine: cached first, then uncached
+        print(f"Sorted: {len(cached_torrents)} cached + {len(uncached_torrents)} uncached", flush=True)
+        return cached_torrents + uncached_torrents
+    else:
+        # Normal sorting with all criteria
+        return _sort_by_criteria(torrents, sort_criteria, sort_order)
+
+
+def _sort_by_criteria(
+    torrents: List[TorrentResult],
+    sort_criteria: List[str],
+    sort_order: str
+) -> List[TorrentResult]:
+    """Helper function to sort torrents by criteria (excluding cache status)."""
     # Define get value function for each criterion
     def get_sort_value(torrent: TorrentResult, criterion: str):
         title = torrent.title.lower()
@@ -129,25 +180,11 @@ def sort_torrents(
         elif criterion == "quality":
             return quality_score(title)
             
-        elif criterion == "cached":
-            if cache_status_map:
-                cache_status = cache_status_map.get(torrent.info_hash)
-                # Convert enum to string for comparison
-                cache_str = str(cache_status).lower() if cache_status else ""
-                # CACHED = 2, UNKNOWN = 1, NOT_CACHED = 0
-                if "cached" in cache_str:
-                    return 2
-                elif "unknown" in cache_str:
-                    return 1
-                else:
-                    return 0
-            return 0
-            
         else:
             return quality_score(title)
     
-    # Multi-level sorting using tuple of values
     reverse = sort_order == "desc"
+    
     sorted_torrents = sorted(
         torrents,
         key=lambda t: tuple(get_sort_value(t, criterion) for criterion in sort_criteria),

@@ -69,6 +69,9 @@ def normalize_debrid(cfg):
     if cfg.get("provider") and cfg.get("api_key"):
         return cfg["provider"], cfg["api_key"]
 
+    if cfg.get("torrin_key"):
+        return "torrin", cfg["torrin_key"]
+
     if cfg.get("torbox_key"):
         return "torbox", cfg["torbox_key"]
 
@@ -160,6 +163,7 @@ async def stream(
         provider_str, api_key = normalize_debrid(cfg)
         debrid_client = None
         cache_status_map = {}
+        provider = None
 
         if provider_str and api_key:
             try:
@@ -229,19 +233,45 @@ async def stream(
                 "streams": []
             }
 
-
-        # Check cache status if debrid is available
+        # Check cache status BEFORE filtering so we have data for all torrents
         if debrid_client:
             try:
-                info_hashes = [t.info_hash for t in torrents]
+                info_hashes = [t.info_hash for t in torrents]  # Use original hashes
+                print(f"DEBUG: Checking cache for {len(info_hashes)} hashes", flush=True)
+                print(f"DEBUG: First 3 hashes to check: {info_hashes[:3]}", flush=True)
                 cache_status_map = await debrid_client.check_cache(info_hashes)
                 print(f"Cache check completed for {len(info_hashes)} torrents", flush=True)
+                # Log cache status summary
+                cached_count = 0
+                not_cached_count = 0
+                unknown_count = 0
+                for s in cache_status_map.values():
+                    if s == "cached" or str(s) == "cached":
+                        cached_count += 1
+                    elif s == "not_cached" or str(s) == "not_cached":
+                        not_cached_count += 1
+                    else:
+                        unknown_count += 1
+                print(f"Cache status summary: {cached_count} cached, {not_cached_count} not_cached, {unknown_count} unknown", flush=True)
+                print(f"Total cache_status_map entries: {len(cache_status_map)}", flush=True)
                 # Log some cache statuses for debugging
                 for info_hash, status in list(cache_status_map.items())[:5]:
                     print(f"  {info_hash[:16]}... -> {status}", flush=True)
             except Exception as e:
                 print(f"Error checking cache: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
+                cache_status_map = {}
+        else:
+            print("No debrid client - cache_status_map will be empty", flush=True)
+            cache_status_map = {}
 
+
+        # Apply filtering pipeline (resolution limits, quality filters, etc.)
+        pipeline = FilterPipeline(cfg)
+        
+        torrents = pipeline.apply(torrents)
+        print(f"After filtering pipeline: {len(torrents)} torrents", flush=True)
 
         # Better episode matching
         if type == "series" and season and episode:
@@ -283,28 +313,55 @@ async def stream(
             )
 
 
+        # Apply filtering pipeline (resolution limits, quality filters, etc.)
+        pipeline = FilterPipeline(cfg)
+        
+        torrents = pipeline.apply(torrents)
+        print(f"After filtering pipeline: {len(torrents)} torrents", flush=True)
+        
+        # Create normalized cache_status_map AFTER filtering
+        normalized_cache_map = {}
+        if debrid_client and cache_status_map:
+            print(f"DEBUG: Building normalized_cache_map for {len(torrents)} torrents", flush=True)
+            for t in torrents:
+                # Try direct match first (since Torrin now returns original hash keys)
+                status = cache_status_map.get(t.info_hash)
+                if not status:
+                    # Fallback to lowercase match
+                    status = cache_status_map.get(t.info_hash.lower())
+                normalized_cache_map[t.info_hash] = status or CacheStatus.NOT_CACHED
+                if str(status) == "cached":
+                    print(f"  Matched cached: {t.title[:40]}... (hash: {t.info_hash[:16]}...)", flush=True)
+            cached_after = sum(1 for v in normalized_cache_map.values() if str(v) == "cached")
+            print(f"  Cached torrents after filtering: {cached_after}", flush=True)
+            # Debug: show some cached torrents
+            if cached_after > 0:
+                print("Sample cached torrents:", flush=True)
+                for t in torrents[:10]:
+                    if str(normalized_cache_map.get(t.info_hash)) == "cached":
+                        print(f"  {t.title[:40]}... (hash: {t.info_hash[:16]}...)", flush=True)
+        else:
+            normalized_cache_map = {}
+
         # Filter by cached only if enabled
         cached_only = cfg.get("cached_only", False)
         if cached_only and debrid_client:
             torrents = [
                 t for t in torrents
-                if cache_status_map.get(t.info_hash) == CacheStatus.CACHED
+                if normalized_cache_map.get(t.info_hash) == CacheStatus.CACHED
             ]
             print(f"After cached_only filter: {len(torrents)} torrents", flush=True)
-
-        # Apply filtering pipeline (resolution limits, quality filters, etc.)
-        pipeline = FilterPipeline(cfg)
-        torrents = pipeline.apply(torrents)
-        print(f"After filtering pipeline: {len(torrents)} torrents", flush=True)
 
 
         # Apply sorting based on user preferences
         sort_criteria = cfg.get("sort_criteria")
+        print(f"Raw sort_criteria from config: {sort_criteria}", flush=True)
         if isinstance(sort_criteria, str):
             sort_criteria = sort_criteria.split(",") if sort_criteria else ["seeders", "resolution", "quality"]
         elif not sort_criteria:
             sort_criteria = ["seeders", "resolution", "quality"]
         
+        print(f"Final sort_criteria: {sort_criteria}", flush=True)
         sort_order = cfg.get("sort_order", "desc")
         allow_season_packs = cfg.get("allow_season_packs", False)
         
@@ -313,9 +370,15 @@ async def stream(
             sort_criteria=sort_criteria,
             sort_order=sort_order,
             allow_season_packs=allow_season_packs,
-            cache_status_map=cache_status_map if debrid_client else None
+            cache_status_map=normalized_cache_map if debrid_client else None
         )
         print(f"After sorting by {sort_criteria} {sort_order}: {len(torrents)} torrents", flush=True)
+        
+        # Debug: show first 10 torrents after sorting with their cache status
+        print("First 10 torrents after sorting:", flush=True)
+        for i, t in enumerate(torrents[:10]):
+            cache_status = normalized_cache_map.get(t.info_hash, "no_map") if debrid_client else "no_client"
+            print(f"  {i+1}. {t.title[:40]}... (cache: {cache_status})", flush=True)
 
 
         output = []
@@ -324,7 +387,7 @@ async def stream(
         for torrent in torrents:
 
             # Determine stream name based on cache status and debrid configuration
-            cache_status = cache_status_map.get(torrent.info_hash, CacheStatus.UNKNOWN)
+            cache_status = normalized_cache_map.get(torrent.info_hash, CacheStatus.UNKNOWN) if debrid_client else CacheStatus.UNKNOWN
             stream_name = "Cauldron"
 
             if debrid_client:
