@@ -1,43 +1,38 @@
 services:
-
   app:
     build: .
     container_name: cauldron-app
-
     ports:
       - "8008:8000"
-
     labels:
       - "net.unraid.docker.icon=https://raw.githubusercontent.com/wizaarddlabs/cauldron/main/cauldron-removebg-preview.png"
-
     volumes:
       - ./app:/srv/app
       - ./data:/data
-
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - ADDON_URL=https://cauldron.forthewizards.uk
-      - ZILEAN_ENABLED=true
-      - ZILEAN_URL=${ZILEAN_URL:-http://zilean:8181}
-      - TORRIN_API_KEY=${TORRIN_API_KEY}
+      REDIS_URL: redis://redis:6379/0
+      ADDON_URL: https://cauldron.forthewizards.uk
+      ZILEAN_ENABLED: "true"
+      ZILEAN_URL: ${ZILEAN_URL:-http://zilean:8181}
+      TORRIN_API_KEY: ${TORRIN_API_KEY}
     restart: unless-stopped
     networks:
       - cauldron-network
     depends_on:
-      - redis
-      - zilean
-
+      redis:
+        condition: service_started
+      zilean:
+        condition: service_started
 
   redis:
     image: redis:7-alpine
     container_name: cauldron-redis
-
     ports:
       - "6380:6379"
-
     command: >
-      sh -c "redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_EVICTION_POLICY:-allkeys-lru}"
-
+      sh -c "redis-server
+      --maxmemory ${REDIS_MAX_MEMORY:-512mb}
+      --maxmemory-policy ${REDIS_EVICTION_POLICY:-allkeys-lru}"
     restart: unless-stopped
     networks:
       - cauldron-network
@@ -45,20 +40,52 @@ services:
       - redis-data:/data
 
   zilean:
-    image: ipromknight/zilean:latest
+    build:
+      context: /opt/cauldron/zilean-new
+      dockerfile: Dockerfile
+    image: cauldron-zilean:latest
     container_name: cauldron-zilean
+    ports:
+      - "8181:8181"
     labels:
       - "net.unraid.docker.icon=https://raw.githubusercontent.com/selfhosters/unraid-templates/master/templates/icons/zilean.png"
     restart: unless-stopped
     environment:
-      Zilean__Database__ConnectionString: "Host=zilean-postgres;Port=5432;Database=zilean;Username=zilean;Password=${ZILEAN_POSTGRES_PASSWORD}"
+      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
+
+      # ASP.NET
+      ASPNETCORE_URLS: http://+:8181
+      ASPNETCORE_HTTP_PORTS: "8181"
+
+      # Zilean database
+      Zilean__Database__ConnectionString: >-
+        Host=zilean-postgres;
+        Port=5432;
+        Database=zilean;
+        Username=zilean;
+        Password=${ZILEAN_POSTGRES_PASSWORD}
+
+      # Dashboard
+      Zilean__EnableDashboard: "true"
+
+      # DMM Hashlists
       Zilean__Dmm__EnableScraping: "true"
       Zilean__Dmm__EnableEndpoint: "true"
       Zilean__Dmm__ImportBatched: "true"
       Zilean__Dmm__MaxFilteredResults: "200"
+
+      # Torznab
+      Zilean__Torznab__EnableEndpoint: "true"
+
+      # IMDb
       Zilean__Imdb__EnableImportMatching: "true"
+
+      # GitHub authentication for DMM Hashlists
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+
     networks:
       - cauldron-network
+
     depends_on:
       zilean-postgres:
         condition: service_healthy
@@ -78,14 +105,15 @@ services:
     networks:
       - cauldron-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U zilean -d zilean"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U zilean -d zilean
       interval: 10s
       timeout: 5s
       retries: 10
 
 volumes:
   redis-data:
-  zilean-postgres-data:
 
 networks:
   cauldron-network:
