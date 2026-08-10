@@ -159,30 +159,7 @@ A failure in one scraper does not prevent the remaining sources from returning r
 
 Each scraper is isolated through a safe wrapper that logs failures and returns an empty result set instead of taking down the entire search.
 
----
-
-# Torrin Integration
-
-Cauldron supports Torrin as an additional torrent/debrid aggregation source.
-
-Torrin is queried alongside the built-in public scrapers and its results pass through the same downstream validation, deduplication, cache handling, and ranking pipeline.
-
-The Torrin integration is intentionally treated as another scraper rather than a separate result path.
-
-This means Torrin results receive the same:
-
-* Title validation
-* Season/episode validation
-* Deduplication
-* Cache status handling
-* Sorting
-* Ranking
-
-as results from other sources.
-
-Configure Torrin through the corresponding environment variables in `.env`.
-
----
+--
 
 # Result Deduplication
 
