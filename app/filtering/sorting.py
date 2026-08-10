@@ -1,11 +1,21 @@
 """
 Cauldron torrent sorting.
 
-Supports multi-level sorting and explicit cache prioritization.
+The user's sort_criteria list is authoritative.
 
-When "cached" is included as a sorting criterion with descending order,
-cached torrents are placed before uncached torrents. The remaining criteria
-are then applied independently within each group.
+Example:
+
+    ["cached", "resolution", "seeders", "quality", "size"]
+
+means:
+
+    1. Cached before uncached
+    2. Higher resolution first
+    3. More seeders first
+    4. Higher quality first
+    5. Larger size first
+
+The order of sort_criteria determines priority.
 """
 
 from typing import List
@@ -13,95 +23,327 @@ from typing import List
 from app.models import TorrentResult
 
 
-def _sort_by_criteria(
-    torrents: List[TorrentResult],
-    sort_criteria: List[str],
-    sort_order: str,
-) -> List[TorrentResult]:
+# ---------------------------------------------------------
+# NORMALIZATION
+# ---------------------------------------------------------
 
-    def resolution_score(title: str) -> int:
-        title = title.lower()
+def _normalize_criterion(value: str) -> str:
+    """
+    Normalize UI/API criterion names.
 
-        if "2160p" in title or "4k" in title:
-            return 2160
+    Accepts variants such as:
 
-        if "1440p" in title:
-            return 1440
+        cache
+        cached
+        cache_status
+        cache status
+        Cache Status
 
-        if "1080p" in title:
-            return 1080
+    and normalizes them to:
 
-        if "720p" in title:
-            return 720
+        cached
+    """
 
-        if "576p" in title:
-            return 576
+    value = str(value or "").strip().lower()
 
-        if "480p" in title:
-            return 480
+    aliases = {
+        "cache": "cached",
+        "cached": "cached",
+        "cache_status": "cached",
+        "cache-status": "cached",
+        "cache status": "cached",
+        "cachestatus": "cached",
 
+        "resolution": "resolution",
+        "quality": "quality",
+        "quality_score": "quality",
+        "quality-score": "quality",
+        "quality score": "quality",
+
+        "seeders": "seeders",
+        "seeds": "seeders",
+        "seed": "seeders",
+
+        "leechers": "leechers",
+        "leeches": "leechers",
+        "leech": "leechers",
+
+        "size": "size",
+        "size_bytes": "size",
+        "size-bytes": "size",
+    }
+
+    return aliases.get(value, value)
+
+
+def _normalize_criteria(sort_criteria) -> list[str]:
+    if not sort_criteria:
+        return [
+            "cached",
+            "resolution",
+            "seeders",
+            "quality",
+        ]
+
+    if isinstance(sort_criteria, str):
+        sort_criteria = sort_criteria.split(",")
+
+    normalized = []
+
+    for criterion in sort_criteria:
+        value = _normalize_criterion(criterion)
+
+        if value and value not in normalized:
+            normalized.append(value)
+
+    return normalized or [
+        "cached",
+        "resolution",
+        "seeders",
+        "quality",
+    ]
+
+
+# ---------------------------------------------------------
+# CACHE
+# ---------------------------------------------------------
+
+def _cache_rank(
+    torrent: TorrentResult,
+    cache_status_map: dict | None,
+) -> int:
+    """
+    Higher is better.
+
+        cached     = 2
+        unknown    = 1
+        uncached   = 0
+
+    Handles CacheStatus enum values as well as strings.
+    """
+
+    if not cache_status_map:
+        return 1
+
+    info_hash = str(
+        getattr(torrent, "info_hash", "") or ""
+    ).lower()
+
+    status = cache_status_map.get(info_hash)
+
+    if status is None:
+        original_hash = getattr(
+            torrent,
+            "info_hash",
+            "",
+        )
+        status = cache_status_map.get(
+            original_hash
+        )
+
+    if status is None:
+        return 1
+
+    # Enum values such as:
+    #
+    # CacheStatus.CACHED
+    #
+    # become:
+    #
+    # "CacheStatus.CACHED"
+    #
+    # while normal strings become:
+    #
+    # "cached"
+
+    status_string = str(
+        getattr(status, "value", status)
+    ).strip().lower()
+
+    if status_string in {
+        "cached",
+        "cache",
+        "true",
+        "available",
+    }:
+        return 2
+
+    if status_string in {
+        "not_cached",
+        "not-cached",
+        "not cached",
+        "uncached",
+        "false",
+        "unavailable",
+    }:
         return 0
 
-    def quality_score(title: str) -> int:
-        title = title.lower()
-
-        scores = {
-            "remux": 100,
-            "bluray": 90,
-            "blu-ray": 90,
-            "web-dl": 80,
-            "web dl": 80,
-            "webrip": 70,
-            "web rip": 70,
-            "hdtv": 60,
-            "dvdrip": 50,
-            "brrip": 40,
-            "hdrip": 30,
-            "cam": 10,
-            "ts": 5,
-            "telesync": 5,
-        }
-
-        for key, score in scores.items():
-            if key in title:
-                return score
-
-        return 0
-
-    def get_sort_value(
-        torrent: TorrentResult,
-        criterion: str,
+    if (
+        "not_cached" in status_string
+        or "not-cached" in status_string
+        or "not cached" in status_string
+        or "uncached" in status_string
     ):
-        title = torrent.title.lower()
-
-        if criterion == "seeders":
-            return getattr(torrent, "seeders", 0) or 0
-
-        if criterion == "leechers":
-            return getattr(torrent, "leechers", 0) or 0
-
-        if criterion == "size":
-            return getattr(torrent, "size_bytes", 0) or 0
-
-        if criterion == "resolution":
-            return resolution_score(title)
-
-        if criterion == "quality":
-            return quality_score(title)
-
         return 0
 
-    reverse = sort_order == "desc"
+    if "cached" in status_string:
+        return 2
 
-    return sorted(
-        torrents,
-        key=lambda torrent: tuple(
-            get_sort_value(torrent, criterion)
-            for criterion in sort_criteria
-        ),
-        reverse=reverse,
+    return 1
+
+
+# ---------------------------------------------------------
+# RESOLUTION
+# ---------------------------------------------------------
+
+def _resolution_score(
+    torrent: TorrentResult,
+) -> int:
+
+    quality = str(
+        getattr(torrent, "quality", "") or ""
+    ).lower()
+
+    title = str(
+        getattr(torrent, "title", "") or ""
+    ).lower()
+
+    value = f"{quality} {title}"
+
+    if "2160p" in value or "4k" in value:
+        return 2160
+
+    if "1440p" in value:
+        return 1440
+
+    if "1080p" in value:
+        return 1080
+
+    if "720p" in value:
+        return 720
+
+    if "576p" in value:
+        return 576
+
+    if "480p" in value:
+        return 480
+
+    if "360p" in value:
+        return 360
+
+    if "240p" in value:
+        return 240
+
+    return 0
+
+
+# ---------------------------------------------------------
+# QUALITY
+# ---------------------------------------------------------
+
+def _quality_score(
+    torrent: TorrentResult,
+) -> int:
+
+    quality = str(
+        getattr(torrent, "quality", "") or ""
+    ).lower()
+
+    title = str(
+        getattr(torrent, "title", "") or ""
+    ).lower()
+
+    value = f"{quality} {title}"
+
+    scores = {
+        "remux": 100,
+        "bluray": 90,
+        "blu-ray": 90,
+        "web-dl": 80,
+        "web dl": 80,
+        "webrip": 70,
+        "web rip": 70,
+        "hdtv": 60,
+        "dvdrip": 50,
+        "brrip": 40,
+        "hdrip": 30,
+        "cam": 10,
+        "ts": 5,
+        "telesync": 5,
+    }
+
+    for key, score in scores.items():
+        if key in value:
+            return score
+
+    return 0
+
+
+# ---------------------------------------------------------
+# SORT VALUE
+# ---------------------------------------------------------
+
+def _sort_value(
+    torrent: TorrentResult,
+    criterion: str,
+    cache_status_map: dict | None,
+):
+    criterion = _normalize_criterion(
+        criterion
     )
 
+    if criterion == "cached":
+        return _cache_rank(
+            torrent,
+            cache_status_map,
+        )
+
+    if criterion == "resolution":
+        return _resolution_score(
+            torrent
+        )
+
+    if criterion == "seeders":
+        return (
+            getattr(
+                torrent,
+                "seeders",
+                0,
+            )
+            or 0
+        )
+
+    if criterion == "leechers":
+        return (
+            getattr(
+                torrent,
+                "leechers",
+                0,
+            )
+            or 0
+        )
+
+    if criterion == "size":
+        return (
+            getattr(
+                torrent,
+                "size_bytes",
+                0,
+            )
+            or 0
+        )
+
+    if criterion == "quality":
+        return _quality_score(
+            torrent
+        )
+
+    return 0
+
+
+# ---------------------------------------------------------
+# SORT
+# ---------------------------------------------------------
 
 def sort_torrents(
     torrents: List[TorrentResult],
@@ -114,141 +356,127 @@ def sort_torrents(
     if not torrents:
         return []
 
-    sort_criteria = sort_criteria or [
-        "cached",
-        "seeders",
-        "resolution",
-        "quality",
-    ]
+    criteria = _normalize_criteria(
+        sort_criteria
+    )
 
-    # Remove season packs unless explicitly enabled.
+    # -----------------------------------------------------
+    # SEASON PACK FILTER
+    # -----------------------------------------------------
+
     if not allow_season_packs:
         torrents = [
             torrent
             for torrent in torrents
-            if not _is_season_pack(torrent.title)
+            if not _is_season_pack(
+                torrent.title
+            )
         ]
 
-    # ---------------------------------------------------------
-    # CACHE PRIORITIZATION
-    # ---------------------------------------------------------
+    if not torrents:
+        return []
 
-    prioritize_cached = (
-        "cached" in sort_criteria
-        and sort_order == "desc"
-        and cache_status_map
+    # -----------------------------------------------------
+    # SORT
+    # -----------------------------------------------------
+
+    reverse = (
+        str(sort_order or "desc")
+        .strip()
+        .lower()
+        == "desc"
     )
 
-    if prioritize_cached:
-        cached_torrents = []
-        uncached_torrents = []
-        unknown_torrents = []
+    # Python tuple sorting gives us exactly what we want:
+    #
+    # ["cached", "resolution", "seeders"]
+    #
+    # becomes:
+    #
+    # (
+    #     cache_rank,
+    #     resolution,
+    #     seeders,
+    # )
+    #
+    # Therefore cache is ONLY the primary criterion if
+    # the user actually put it first.
+    #
+    # If the user instead chooses:
+    #
+    # ["resolution", "cached", "seeders"]
+    #
+    # resolution becomes primary and cache becomes a
+    # tiebreaker.
+    #
+    # This is the important difference from the old sorter.
 
-        for torrent in torrents:
-            info_hash = str(
-                getattr(torrent, "info_hash", "")
-            ).lower()
-
-            status = cache_status_map.get(info_hash)
-
-            if status is None:
-                # Try original casing as a fallback.
-                status = cache_status_map.get(
-                    getattr(torrent, "info_hash", "")
-                )
-
-            status_string = (
-                str(status).lower()
-                if status is not None
-                else ""
+    def sort_key(torrent):
+        return tuple(
+            _sort_value(
+                torrent,
+                criterion,
+                cache_status_map,
             )
+            for criterion in criteria
+        )
 
-            if (
-                status_string.endswith("cached")
-                or status_string == "cached"
-                or (
-                    "cached" in status_string
-                    and "not" not in status_string
-                )
-            ):
-                cached_torrents.append(torrent)
+    sorted_results = sorted(
+        torrents,
+        key=sort_key,
+        reverse=reverse,
+    )
 
-            elif (
-                "not_cached" in status_string
-                or "not cached" in status_string
-                or "uncached" in status_string
-            ):
-                uncached_torrents.append(torrent)
+    # -----------------------------------------------------
+    # DEBUG
+    # -----------------------------------------------------
 
-            else:
-                unknown_torrents.append(torrent)
+    print(
+        "SORT CRITERIA:",
+        criteria,
+        "| ORDER:",
+        "DESC" if reverse else "ASC",
+        flush=True,
+    )
 
-        # Cache is a grouping criterion, not a second copy of sorting.
-        remaining_criteria = [
-            criterion
-            for criterion in sort_criteria
-            if criterion != "cached"
-        ]
-
-        if remaining_criteria:
-            cached_torrents = _sort_by_criteria(
-                cached_torrents,
-                remaining_criteria,
-                sort_order,
+    for index, torrent in enumerate(
+        sorted_results[:20],
+        start=1,
+    ):
+        values = tuple(
+            _sort_value(
+                torrent,
+                criterion,
+                cache_status_map,
             )
-
-            uncached_torrents = _sort_by_criteria(
-                uncached_torrents,
-                remaining_criteria,
-                sort_order,
-            )
-
-            unknown_torrents = _sort_by_criteria(
-                unknown_torrents,
-                remaining_criteria,
-                sort_order,
-            )
+            for criterion in criteria
+        )
 
         print(
-            "Sorted cache groups: "
-            f"{len(cached_torrents)} cached + "
-            f"{len(uncached_torrents)} uncached + "
-            f"{len(unknown_torrents)} unknown",
+            f"SORT #{index:02d}: "
+            f"{values} | "
+            f"cached={_cache_rank(torrent, cache_status_map)} | "
+            f"resolution={_resolution_score(torrent)} | "
+            f"seeders={getattr(torrent, 'seeders', 0) or 0} | "
+            f"quality={_quality_score(torrent)} | "
+            f"title={torrent.title}",
             flush=True,
         )
 
-        return (
-            cached_torrents
-            + uncached_torrents
-            + unknown_torrents
-        )
-
-    # ---------------------------------------------------------
-    # NORMAL SORTING
-    # ---------------------------------------------------------
-
-    normal_criteria = [
-        criterion
-        for criterion in sort_criteria
-        if criterion != "cached"
-    ]
-
-    if not normal_criteria:
-        normal_criteria = [
-            "seeders",
-            "resolution",
-            "quality",
-        ]
-
-    return _sort_by_criteria(
-        torrents,
-        normal_criteria,
-        sort_order,
-    )
+    return sorted_results
 
 
-def _is_season_pack(title: str) -> bool:
-    title = title.lower()
+# ---------------------------------------------------------
+# SEASON PACK DETECTION
+# ---------------------------------------------------------
+
+def _is_season_pack(
+    title: str,
+) -> bool:
+
+    title = str(
+        title or ""
+    ).lower()
 
     season_pack_patterns = [
         "season 1",

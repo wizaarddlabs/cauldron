@@ -1,8 +1,3 @@
-"""
-Fans a search query out to every registered scraper concurrently,
-then filters, merges, deduplicates, and ranks torrent results.
-"""
-
 import asyncio
 import logging
 import re
@@ -28,6 +23,7 @@ _SCRAPERS: list[Scraper] = [
 # ---------------------------------------------------------
 # TITLE NORMALIZATION
 # ---------------------------------------------------------
+
 
 def _normalize_title(value: str | None) -> str:
     """
@@ -72,6 +68,7 @@ def _title_tokens(value: str | None) -> list[str]:
 # RELEASE NOISE
 # ---------------------------------------------------------
 
+
 _RELEASE_NOISE = {
     "2160p",
     "1080p",
@@ -79,6 +76,7 @@ _RELEASE_NOISE = {
     "576p",
     "480p",
     "360p",
+    "240p",
     "4k",
     "uhd",
     "fhd",
@@ -111,6 +109,7 @@ _RELEASE_NOISE = {
     "h265",
     "hevc",
     "avc",
+    "av1",
     "aac",
     "ac3",
     "ddp",
@@ -120,6 +119,12 @@ _RELEASE_NOISE = {
     "truehd",
     "10bit",
     "8bit",
+    "hdr",
+    "hdr10",
+    "hdr10+",
+    "dolby",
+    "vision",
+    "dv",
 }
 
 
@@ -138,6 +143,7 @@ def _clean_title_tokens(value: str | None) -> list[str]:
 # ---------------------------------------------------------
 # YEAR EXTRACTION
 # ---------------------------------------------------------
+
 
 def _extract_year(value: str | None) -> int | None:
     if not value:
@@ -161,6 +167,7 @@ def _extract_year(value: str | None) -> int | None:
 # EPISODE DETECTION
 # ---------------------------------------------------------
 
+
 def _episode_matches(
     title: str,
     season: str | int | None,
@@ -171,7 +178,6 @@ def _episode_matches(
     requested season/episode.
 
     Accepted:
-
         S01E01
         S1E1
         1x01
@@ -211,6 +217,7 @@ def _episode_matches(
 # ---------------------------------------------------------
 # TITLE MATCHING - MOVIES
 # ---------------------------------------------------------
+
 
 def _title_matches_movie(
     requested_title: str,
@@ -257,12 +264,6 @@ def _title_matches_movie(
 
         Cars That Ate Paris
             -> REJECT
-
-        The Cars That Made America
-            -> REJECT
-
-        Delphi (Autocom) 2019 Cars
-            -> REJECT
     """
 
     requested_tokens = _clean_title_tokens(requested_title)
@@ -295,10 +296,6 @@ def _title_matches_movie(
     # -----------------------------------------------------
     # NUMBERED SEQUELS
     # -----------------------------------------------------
-    #
-    # Cars 2
-    # Cars 3
-    #
 
     if re.fullmatch(r"\d{1,2}", remaining[0]):
         return False
@@ -306,11 +303,6 @@ def _title_matches_movie(
     # -----------------------------------------------------
     # YEAR
     # -----------------------------------------------------
-    #
-    # Cars 2006
-    #
-    # A year immediately following the title is valid.
-    #
 
     if re.fullmatch(
         r"(19\d{2}|20\d{2})",
@@ -329,18 +321,11 @@ def _title_matches_movie(
     # -----------------------------------------------------
     # RELEASE METADATA
     # -----------------------------------------------------
-    #
-    # Once recognized release metadata begins, subsequent
-    # tokens are treated as release metadata.
-    #
-    # Example:
-    #
-    # Cars 2006 1080p BluRay x264
-    #
 
     metadata_started = False
 
     for token in remaining:
+
         # Standard release metadata.
         if token in _RELEASE_NOISE:
             metadata_started = True
@@ -377,10 +362,7 @@ def _title_matches_movie(
             metadata_started = True
             continue
 
-        # -------------------------------------------------
         # Common release/source identifiers.
-        # -------------------------------------------------
-
         if token in {
             "amzn",
             "nf",
@@ -411,30 +393,13 @@ def _title_matches_movie(
             metadata_started = True
             continue
 
-        # -------------------------------------------------
         # Once metadata has started, tolerate unknown
         # release-group / technical tokens.
-        #
-        # Example:
-        #
-        # Cars 2006 1080p BluRay GROUP
-        # Cars 2006 WEB-DL AMZN
-        # -------------------------------------------------
-
         if metadata_started:
             continue
 
-        # -------------------------------------------------
         # Anything else before metadata starts is considered
         # part of another title.
-        #
-        # Cars on the Road
-        # Cars That Ate Paris
-        # Cars That Drove Us
-        #
-        # -> REJECT
-        # -------------------------------------------------
-
         return False
 
     # -----------------------------------------------------
@@ -457,6 +422,7 @@ def _title_matches_movie(
 # TITLE MATCHING - SERIES
 # ---------------------------------------------------------
 
+
 def _title_matches_series(
     requested_title: str,
     result_title: str,
@@ -477,12 +443,6 @@ def _title_matches_series(
 
         Counting Cars S01E01
             -> REJECT when requesting Cars
-
-        Shed And Buried Classic Cars
-            -> REJECT when requesting Cars
-
-    Episode validation is handled separately by
-    _episode_matches().
     """
 
     requested_tokens = _clean_title_tokens(requested_title)
@@ -505,11 +465,6 @@ def _title_matches_series(
 
     # -----------------------------------------------------
     # After the show title, allow normal series metadata.
-    #
-    # S01E01
-    # 1x01
-    # 1080p
-    # WEB-DL
     # -----------------------------------------------------
 
     remaining = result_tokens[requested_len:]
@@ -520,6 +475,7 @@ def _title_matches_series(
     metadata_started = False
 
     for token in remaining:
+
         # Season/episode token.
         if re.fullmatch(
             r"s\d{1,2}e\d{1,3}",
@@ -586,8 +542,8 @@ def _title_matches_series(
             metadata_started = True
             continue
 
-        # Once metadata has started, tolerate unknown release
-        # group / technical tokens.
+        # Once metadata has started, tolerate unknown
+        # release group / technical tokens.
         if metadata_started:
             continue
 
@@ -600,6 +556,7 @@ def _title_matches_series(
 # ---------------------------------------------------------
 # RESULT FILTERING
 # ---------------------------------------------------------
+
 
 def _result_matches_request(
     result: TorrentResult,
@@ -658,17 +615,16 @@ def _result_matches_request(
     # -----------------------------------------------------
     # UNKNOWN MEDIA TYPE
     # -----------------------------------------------------
-    #
+
     # Preserve existing behavior for API callers that don't
     # provide media_type.
-    #
-
     return True
 
 
 # ---------------------------------------------------------
 # SAFE SCRAPER
 # ---------------------------------------------------------
+
 
 async def _safe_search(
     scraper: Scraper,
@@ -678,6 +634,7 @@ async def _safe_search(
     episode: str | None = None,
     media_type: str | None = None,
 ) -> list[TorrentResult]:
+
     try:
         results = await scraper.search(
             query,
@@ -708,6 +665,7 @@ async def _safe_search(
 # ---------------------------------------------------------
 # AGGREGATOR
 # ---------------------------------------------------------
+
 
 async def search_all(
     query: str,
@@ -800,7 +758,6 @@ async def search_all(
                 f"{getattr(result, 'title', '')}:"
                 f"{getattr(result, 'magnet', '')}"
             )
-
         else:
             unique_key = info_hash
 
@@ -835,7 +792,6 @@ async def search_all(
             results,
             preferences,
         )
-
     else:
         results = sorted(
             results,
