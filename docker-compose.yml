@@ -4,8 +4,6 @@ services:
     container_name: cauldron-app
     ports:
       - "8008:8000"
-    labels:
-      - "net.unraid.docker.icon=https://raw.githubusercontent.com/wizaarddlabs/cauldron/main/cauldron-removebg-preview.png"
     volumes:
       - ./app:/srv/app
       - ./data:/data
@@ -47,8 +45,6 @@ services:
     container_name: cauldron-zilean
     ports:
       - "8181:8181"
-    labels:
-      - "net.unraid.docker.icon=https://raw.githubusercontent.com/selfhosters/unraid-templates/master/templates/icons/zilean.png"
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
@@ -93,8 +89,6 @@ services:
   zilean-postgres:
     image: postgres:16-alpine
     container_name: cauldron-zilean-postgres
-    labels:
-      - "net.unraid.docker.icon=https://raw.githubusercontent.com/linuxserver/docker-templates/master/templates/icons/zilean.png"
     restart: unless-stopped
     environment:
       POSTGRES_DB: zilean
