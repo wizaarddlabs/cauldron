@@ -27,14 +27,14 @@ Cauldron can be used as:
                          └──────────┬──────────┘
                                     │
                   ┌─────────────────┼─────────────────┐
-                  │                 │                 │
-                  ▼                 ▼                 ▼
-          Public Scrapers        Torrin             Zilean
-          TPB / 1337x /         Aggregator          Optional
-          YTS / Nyaa /          / Search             │
-          EZTV / etc.                               │
-                  │                 │                 │
-                  └─────────────────┼─────────────────┘
+                  │                                   │
+                  ▼                                   ▼
+          Public Scrapers                           Zilean
+          TPB / 1337x /                            Optional
+          YTS / Nyaa /                               │
+          EZTV / etc.                                │
+                  │                                  │
+                  └─────────────────┼────────────────┘
                                     │
                                     ▼
                          ┌─────────────────────┐
@@ -88,7 +88,6 @@ Current sources include:
 * Nyaa
 * EZTV
 * Bitsearch
-* Torrin
 * Zilean *(optional/self-hosted)*
 
 The scraper architecture is modular, so additional sources can be added without changing the API layer.
