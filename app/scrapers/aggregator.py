@@ -44,6 +44,12 @@ def _normalize_title(value: str | None) -> str:
     # Remove brackets/parentheses but preserve contents.
     value = re.sub(r"[\[\](){}]", " ", value)
 
+    # Normalize ampersands so:
+    #   "Minions & Monsters"
+    #   "Minions and Monsters"
+    # are treated as the same title.
+    value = value.replace("&", " and ")
+
     # Normalize apostrophes.
     value = value.replace("'", "")
 
