@@ -27,14 +27,14 @@ Cauldron can be used as:
                          └──────────┬──────────┘
                                     │
                   ┌─────────────────┼─────────────────┐
-                  │                 │                 │
-                  ▼                 ▼                 ▼
-          Public Scrapers        Torrin             Zilean
-          TPB / 1337x /         Aggregator          Optional
-          YTS / Nyaa /          / Search             │
-          EZTV / etc.                               │
-                  │                 │                 │
-                  └─────────────────┼─────────────────┘
+                  │                                   │
+                  ▼                                   ▼
+          Public Scrapers                           Zilean
+          TPB / 1337x /                            Optional
+          YTS / Nyaa /                               │
+          EZTV / etc.                                │
+                  │                                  │
+                  └─────────────────┼────────────────┘
                                     │
                                     ▼
                          ┌─────────────────────┐
