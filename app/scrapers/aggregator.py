@@ -5,7 +5,6 @@ import re
 from app.models import TorrentResult
 from app.scrapers.base import Scraper
 from app.scrapers.public_scraper import PublicScraper
-from app.scrapers.torrin import TorrinScraper
 
 from app.ranking.preferences import RankingPreferences
 from app.ranking.scorer import rank_results
@@ -16,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 _SCRAPERS: list[Scraper] = [
     PublicScraper(),
-    TorrinScraper(),
 ]
 
 
