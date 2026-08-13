@@ -88,7 +88,6 @@ Current sources include:
 * Nyaa
 * EZTV
 * Bitsearch
-* Torrin
 * Zilean *(optional/self-hosted)*
 
 The scraper architecture is modular, so additional sources can be added without changing the API layer.
