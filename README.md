@@ -29,9 +29,9 @@ Cauldron can be used as:
                   ┌─────────────────┼─────────────────┐
                   │                                   │
                   ▼                                   ▼
-          Public Scrapers                           Zilean
-          TPB / 1337x /                            Optional
-          YTS / Nyaa /                               │
+          Public Scrapers      Mediafusion          Zilean
+          TPB / 1337x /             &              Optional
+          YTS / Nyaa /            Comet              │
           EZTV / etc.                                │
                   │                                  │
                   └─────────────────┼────────────────┘
