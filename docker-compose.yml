@@ -1,7 +1,6 @@
 services:
   app:
     build: .
-    container_name: cauldron-app
     ports:
       - "8008:8000"
     volumes:
@@ -24,7 +23,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: cauldron-redis
     ports:
       - "6380:6379"
     command: >
@@ -39,10 +37,9 @@ services:
 
   zilean:
     build:
-      context: /opt/cauldron/zilean-new
+      context: ./zilean-new
       dockerfile: Dockerfile
     image: cauldron-zilean:latest
-    container_name: cauldron-zilean
     ports:
       - "8181:8181"
     restart: unless-stopped
@@ -88,7 +85,6 @@ services:
 
   zilean-postgres:
     image: postgres:16-alpine
-    container_name: cauldron-zilean-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: zilean

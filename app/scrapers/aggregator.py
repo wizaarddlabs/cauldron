@@ -5,6 +5,8 @@ import re
 from app.models import TorrentResult
 from app.scrapers.base import Scraper
 from app.scrapers.public_scraper import PublicScraper
+from app.scrapers.comet import CometScraper
+from app.scrapers.mediafusion import MediaFusionScraper
 
 from app.ranking.preferences import RankingPreferences
 from app.ranking.scorer import rank_results
@@ -15,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 _SCRAPERS: list[Scraper] = [
     PublicScraper(),
+    CometScraper(),
+    MediaFusionScraper(),
 ]
 
 
@@ -572,8 +576,10 @@ def _result_matches_request(
     """
     Final safety filter applied after every scraper returns.
 
-    Public torrent indexes frequently return loosely related
-    results, so this filter is intentionally strict.
+    IMDb-ID-backed scrapers such as Comet, MediaFusion, and Zilean already
+    performed an ID-specific lookup, so their results do not need to match
+    the Cinemeta title string exactly. Public indexers continue to use the
+    strict title/year filter.
     """
 
     result_title = str(
@@ -582,6 +588,24 @@ def _result_matches_request(
 
     if not result_title:
         return False
+
+    # -----------------------------------------------------
+    # IMDb-ID-BACKED SCRAPERS
+    # -----------------------------------------------------
+
+    if getattr(result, "source", "") in {
+        "comet",
+        "mediafusion",
+        "zilean",
+    }:
+        if media_type == "series":
+            return _episode_matches(
+                result_title,
+                season,
+                episode,
+            )
+
+        return True
 
     # -----------------------------------------------------
     # SERIES
@@ -620,8 +644,6 @@ def _result_matches_request(
     # UNKNOWN MEDIA TYPE
     # -----------------------------------------------------
 
-    # Preserve existing behavior for API callers that don't
-    # provide media_type.
     return True
 
 

@@ -20,6 +20,30 @@ class FilterPipeline:
     def __init__(self, cfg: dict | None):
         self.cfg = cfg or {}
 
+    @staticmethod
+    def _resolution_text(torrent: TorrentResult) -> str:
+        """
+        Build the text used for resolution detection.
+
+        Some scrapers, especially Zilean, provide resolution
+        separately from the torrent title. Include both so that
+        an explicit resolution such as 2160p/4K is not lost.
+        """
+
+        title = str(
+            getattr(torrent, "title", "")
+            or ""
+        )
+
+        quality = str(
+            getattr(torrent, "quality", "")
+            or ""
+        )
+
+        if quality:
+            return f"{title} {quality}"
+
+        return title
 
     def apply(
         self,
@@ -41,7 +65,6 @@ class FilterPipeline:
             []
         ) or []
 
-
         try:
             min_seeders = int(
                 self.cfg.get(
@@ -51,7 +74,6 @@ class FilterPipeline:
             )
         except Exception:
             min_seeders = 0
-
 
         try:
             max_size_gb = float(
@@ -63,26 +85,27 @@ class FilterPipeline:
         except Exception:
             max_size_gb = 0
 
-
         filtered = []
-
 
         for t in torrents:
 
-            # Resolution filter
+            # Resolution filter.
+            #
+            # Use both the title and the explicit quality/resolution
+            # field supplied by the scraper.
+            resolution_text = self._resolution_text(t)
+
             if not matches_resolution(
-                t.title,
+                resolution_text,
                 res_allowed
             ):
                 continue
-
 
             # Seeder filter
             if (
                 t.seeders or 0
             ) < min_seeders:
                 continue
-
 
             # Language filter
             if not matches_language(
@@ -91,14 +114,12 @@ class FilterPipeline:
             ):
                 continue
 
-
             # Codec filter
             if not matches_codec(
                 t.title,
                 codecs
             ):
                 continue
-
 
             # Size filter
             if (
@@ -109,10 +130,7 @@ class FilterPipeline:
             ):
                 continue
 
-
             filtered.append(t)
-
-
 
         # Deduplicate
         if self.cfg.get(
@@ -135,8 +153,6 @@ class FilterPipeline:
 
             filtered = deduped
 
-
-
         # Limit results per resolution
         try:
             max_per = int(
@@ -148,7 +164,6 @@ class FilterPipeline:
         except Exception:
             max_per = 0
 
-
         if max_per > 0:
 
             buckets = {}
@@ -156,9 +171,13 @@ class FilterPipeline:
 
             for t in filtered:
 
+                resolution_text = (
+                    self._resolution_text(t)
+                )
+
                 res = (
                     detect_resolution(
-                        t.title
+                        resolution_text
                     )
                     or "unknown"
                 )
@@ -175,8 +194,6 @@ class FilterPipeline:
 
                 limited.append(t)
 
-
             filtered = limited
-
 
         return filtered
