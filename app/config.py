@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     addon_id: str = "community.cauldron"
     addon_name: str = "Cauldron"
-    addon_version: str = "0.0.3"
+    addon_version: str = "0.1.0"
     addon_url: str = "http://localhost:8000"
 
     # --- Debrid provider API bases (rarely need changing) ---
