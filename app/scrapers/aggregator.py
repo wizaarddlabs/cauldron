@@ -451,6 +451,9 @@ def _title_matches_series(
 
         Counting Cars S01E01
             -> REJECT when requesting Cars
+
+        Monarch Legacy of Monsters S01E01
+            -> REJECT when requesting Monster
     """
 
     requested_tokens = _clean_title_tokens(requested_title)
@@ -576,10 +579,26 @@ def _result_matches_request(
     """
     Final safety filter applied after every scraper returns.
 
-    IMDb-ID-backed scrapers such as Comet, MediaFusion, and Zilean already
-    performed an ID-specific lookup, so their results do not need to match
-    the Cinemeta title string exactly. Public indexers continue to use the
-    strict title/year filter.
+    IMPORTANT:
+        IMDb-ID-backed sources such as Comet and MediaFusion
+        are NOT automatically trusted.
+
+    An IMDb ID identifies the requested media item when
+    searching the source, but the returned release title
+    still has to pass our local title/media/episode filter.
+
+    This prevents cases such as:
+
+        Supergirl movie
+            -> Supergirl S01E01
+            -> REJECT
+
+        Monster anime
+            -> Monarch Legacy of Monsters S01E01
+            -> REJECT
+
+    Every scraper therefore passes through the same final
+    validation layer.
     """
 
     result_title = str(
@@ -590,24 +609,6 @@ def _result_matches_request(
         return False
 
     # -----------------------------------------------------
-    # IMDb-ID-BACKED SCRAPERS
-    # -----------------------------------------------------
-
-    if getattr(result, "source", "") in {
-        "comet",
-        "mediafusion",
-        "zilean",
-    }:
-        if media_type == "series":
-            return _episode_matches(
-                result_title,
-                season,
-                episode,
-            )
-
-        return True
-
-    # -----------------------------------------------------
     # SERIES
     # -----------------------------------------------------
 
@@ -616,6 +617,11 @@ def _result_matches_request(
             query,
             result_title,
         ):
+            logger.debug(
+                "TITLE FILTER REJECT [series]: %r -> %r",
+                query,
+                result_title,
+            )
             return False
 
         if not _episode_matches(
@@ -623,6 +629,12 @@ def _result_matches_request(
             season,
             episode,
         ):
+            logger.debug(
+                "EPISODE FILTER REJECT: S%sE%s -> %r",
+                season,
+                episode,
+                result_title,
+            )
             return False
 
         return True
@@ -634,11 +646,19 @@ def _result_matches_request(
     if media_type == "movie":
         requested_year = _extract_year(query)
 
-        return _title_matches_movie(
+        if not _title_matches_movie(
             query,
             result_title,
             requested_year=requested_year,
-        )
+        ):
+            logger.debug(
+                "TITLE FILTER REJECT [movie]: %r -> %r",
+                query,
+                result_title,
+            )
+            return False
+
+        return True
 
     # -----------------------------------------------------
     # UNKNOWN MEDIA TYPE
