@@ -70,10 +70,12 @@ class RankingPreferences:
     max_size_gb: float = 0
 
     # Debrid API keys
+    torrin_key: str = ""
     torbox_key: str = ""
     realdebrid_key: str = ""
     alldebrid_key: str = ""
     premiumize_key: str = ""
+    offcloud_key: str = ""
 
 
 

@@ -312,6 +312,12 @@ async def generate_manifest(
                 if form.get("alldebrid_key")
                 else
                 "premiumize"
+                if form.get("premiumize_key")
+                else
+                "offcloud"
+                if form.get("offcloud_key")
+                else
+                "premiumize"
             ),
 
         "api_key":
@@ -325,6 +331,8 @@ async def generate_manifest(
                 form.get("alldebrid_key")
                 or
                 form.get("premiumize_key")
+                or
+                form.get("offcloud_key")
             ),
 
         # -------------------------------------------------

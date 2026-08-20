@@ -29,6 +29,7 @@ class DebridProvider(str, Enum):
     PREMIUMIZE = "premiumize"
     TORBOX = "torbox"
     TORRIN = "torrin"
+    OFFCLOUD = "offcloud"
 
 
 class CacheStatus(str, Enum):

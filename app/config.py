@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     torbox_api_base: str = "https://api.torbox.app/v1/api"
     torrin_api_base: str = "https://api.torrin.app"
     torrin_api_key: Optional[str] = None
+    offcloud_api_base: str = "https://offcloud.com/api"
     # --- Cache ---
     redis_url: Optional[str] = Field(default=None, description="e.g. redis://localhost:6379/0")
     cache_ttl_search: int = 60 * 60       # 1 hour for scrape results (increased for high-traffic)

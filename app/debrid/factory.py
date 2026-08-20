@@ -3,6 +3,7 @@ Factory for instantiating the right debrid client from a provider name.
 """
 from app.debrid.alldebrid import AllDebridClient
 from app.debrid.base import DebridClient
+from app.debrid.offcloud import OffcloudClient
 from app.debrid.premiumize import PremiumizeClient
 from app.debrid.realdebrid import RealDebridClient
 from app.debrid.torbox import TorBoxClient
@@ -15,6 +16,7 @@ _REGISTRY: dict[DebridProvider, type[DebridClient]] = {
     DebridProvider.PREMIUMIZE: PremiumizeClient,
     DebridProvider.TORBOX: TorBoxClient,
     DebridProvider.TORRIN: TorrinClient,
+    DebridProvider.OFFCLOUD: OffcloudClient,
 }
 
 
