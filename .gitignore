@@ -25,3 +25,6 @@ data/
 
 # OS
 .DS_Store
+*.before-*
+zilean-new/
+zilean/

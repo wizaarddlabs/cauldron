@@ -37,7 +37,7 @@ services:
 
   zilean:
     build:
-      context: ./zilean-new
+      context: ./zilean
       dockerfile: Dockerfile
     image: cauldron-zilean:latest
     ports:
