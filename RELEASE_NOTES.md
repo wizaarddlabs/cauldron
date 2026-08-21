@@ -34,6 +34,7 @@
 - Updated `app/ranking/scorer.py` with language-based scoring
 - Removed deprecated `list_user_torrents` methods from debrid clients
 - Updated version to 0.2.0 in `app/config.py`
+- Restored version display to UI settings page
 
 ---
 
