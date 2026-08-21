@@ -256,41 +256,6 @@ class TorrinClient(DebridClient):
         return data.get("files", [])
 
     # ---------------------------------------------------------
-    # LIST USER TORRENTS
-    # ---------------------------------------------------------
-    # GET /rest/1.0/torrents
-
-    async def list_user_torrents(
-        self,
-    ) -> list[dict]:
-
-        try:
-
-            url = f"{self._base}/rest/1.0/torrents"
-
-            async with httpx.AsyncClient(
-                timeout=self._timeout
-            ) as client:
-
-                response = await client.get(
-                    url,
-                    headers=self._headers,
-                )
-
-                if response.status_code != 200:
-                    return []
-
-                data = response.json()
-
-            if isinstance(data, list):
-                return data
-
-            return []
-
-        except Exception:
-            return []
-
-    # ---------------------------------------------------------
     # PLAYBACK
     # ---------------------------------------------------------
     # GET /rest/1.0/torrents/info/{id} for status + links, then

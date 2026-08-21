@@ -36,15 +36,6 @@ class DebridClient(ABC):
         """List playable files within an added torrent."""
         raise NotImplementedError
 
-    async def list_user_torrents(self) -> list[dict]:
-        """
-        Optional: return a list of torrent-like dicts from the user's account/library.
-        Default implementation returns an empty list so callers can safely attempt
-        to include account torrents when available.
-        """
-
-        return []
-
     @abstractmethod
     async def get_playback_link(
         self, torrent_id: str, file_index: Optional[int] = None

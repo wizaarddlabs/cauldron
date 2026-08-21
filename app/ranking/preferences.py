@@ -24,8 +24,6 @@ class RankingPreferences:
 
     excluded_languages: list[str] = field(default_factory=list)
 
-    multi_language: bool = False
-
     audio: str = "any"
 
     quality_profile: str = "balanced"
@@ -65,7 +63,6 @@ class RankingPreferences:
     custom_patterns: str = ""
     cached_only: bool = False
     dedupe_streams: bool = False
-    scrape_debrid: bool = False
     max_per_resolution: int = 0
     max_size_gb: float = 0
 

@@ -9,6 +9,8 @@ from app.filtering.resolution import (
 
 from app.filtering.matchers import (
     matches_language,
+    matches_required_languages,
+    matches_excluded_languages,
     matches_codec,
 )
 
@@ -60,6 +62,21 @@ class FilterPipeline:
             []
         ) or []
 
+        required_languages = self.cfg.get(
+            "required_languages",
+            []
+        ) or []
+
+        preferred_languages = self.cfg.get(
+            "preferred_languages",
+            []
+        ) or []
+
+        excluded_languages = self.cfg.get(
+            "excluded_languages",
+            []
+        ) or []
+
         codecs = self.cfg.get(
             "codec",
             []
@@ -107,10 +124,24 @@ class FilterPipeline:
             ) < min_seeders:
                 continue
 
-            # Language filter
+            # Language filter (general)
             if not matches_language(
                 t.title,
                 languages
+            ):
+                continue
+
+            # Required languages filter (must contain at least one)
+            if not matches_required_languages(
+                t.title,
+                required_languages
+            ):
+                continue
+
+            # Excluded languages filter (must not contain any)
+            if not matches_excluded_languages(
+                t.title,
+                excluded_languages
             ):
                 continue
 
@@ -141,14 +172,26 @@ class FilterPipeline:
             deduped = []
 
             for t in filtered:
+                # Handle missing info_hash like the aggregator does
+                info_hash = str(
+                    getattr(t, "info_hash", "") or ""
+                ).lower()
 
-                if t.info_hash in seen:
+                if not info_hash:
+                    # Results without an info hash cannot be safely deduplicated
+                    # Create a unique key from title and magnet
+                    unique_key = (
+                        f"nohash:"
+                        f"{getattr(t, 'title', '')}:"
+                        f"{getattr(t, 'magnet', '')}"
+                    )
+                else:
+                    unique_key = info_hash
+
+                if unique_key in seen:
                     continue
 
-                seen.add(
-                    t.info_hash
-                )
-
+                seen.add(unique_key)
                 deduped.append(t)
 
             filtered = deduped

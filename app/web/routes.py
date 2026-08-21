@@ -374,13 +374,6 @@ async def generate_manifest(
                 "excluded_languages"
             ),
 
-        "multi_language":
-            bool(
-                form.get(
-                    "multi_language"
-                )
-            ),
-
         "filters":
             form.getlist(
                 "filters"
@@ -452,9 +445,6 @@ async def generate_manifest(
 
         "dedupe_streams":
             "dedupe_streams" in form,
-
-        "scrape_debrid":
-            "scrape_debrid" in form,
 
         "max_per_resolution":
             int(

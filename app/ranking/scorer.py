@@ -1,5 +1,6 @@
 from app.models import TorrentResult
 from app.ranking.preferences import RankingPreferences
+from app.filtering.matchers import LANGUAGE_PATTERNS, _match_patterns
 import re
 
 
@@ -129,6 +130,19 @@ def score_result(
     score += (
         result.seeders or 0
     ) * prefs.seeder_weight
+
+
+    # =====================
+    # Preferred languages bonus
+    # =====================
+
+    if prefs.preferred_languages:
+        title_lower = result.title.lower()
+        for lang in prefs.preferred_languages:
+            patterns = LANGUAGE_PATTERNS.get(lang.lower())
+            if patterns and _match_patterns(title_lower, patterns):
+                score += 100  # Bonus for preferred language
+                break  # Only bonus once even if multiple preferred languages match
 
 
     # =====================

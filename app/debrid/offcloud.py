@@ -204,12 +204,3 @@ class OffcloudClient(DebridClient):
                 flush=True,
             )
             raise
-
-    async def list_user_torrents(self) -> list[dict]:
-        """
-        Attempts to list torrents from the Offcloud account.
-
-        Offcloud's documented API doesn't expose a user-cloud listing
-        endpoint, so return an empty list.
-        """
-        return []

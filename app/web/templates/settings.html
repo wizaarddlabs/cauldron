@@ -69,9 +69,8 @@
     <div class="muted small">Manage how debrid services are used</div>
     <div class="checkbox-row" style="margin-top:10px">
       <label><input type="checkbox" name="dedupe_streams" {% if prefs.dedupe_streams %}checked{% endif %}> Deduplicate Streams</label>
-      <label><input type="checkbox" name="scrape_debrid" {% if prefs.scrape_debrid %}checked{% endif %}> Scrape Debrid Account Torrents</label>
     </div>
-    <p class="muted small" style="margin-top:8px">Deduplicate keeps the first occurrence of a torrent across providers. Scrape debrid will include your account library when available.</p>
+    <p class="muted small" style="margin-top:8px">Deduplicate keeps the first occurrence of a torrent across providers.</p>
   </div>
 
   <div class="card">
@@ -117,10 +116,6 @@
   <div class="card">
     <h2>Languages</h2>
     <div class="muted small">Select the languages you require, prefer, or want excluded.</div>
-
-    <div class="checkbox-row" style="margin-top:12px">
-      <label><input type="checkbox" name="multi_language" value="1" {% if prefs.multi_language %}checked{% endif %}>Multi language</label>
-    </div>
 
     {% set language_options = [
       {'value':'arabic','label':'Arabic'},
