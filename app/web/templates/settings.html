@@ -31,11 +31,7 @@
 {% endif %}
 
 <div class="card">
-  <h2>⚙️ Status</h2>
-  <p>
-    Version:
-    <span class="pill">v{{ settings.addon_version }}</span>
-  </p>
+  <p class="small muted">Version: v{{ settings.addon_version }}</p>
 </div>
 
 <form method="post" action="/generate">
