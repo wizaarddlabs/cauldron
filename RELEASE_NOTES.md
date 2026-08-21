@@ -1,3 +1,42 @@
+# Cauldron v0.2.0
+
+## 🎉 New Features
+
+- **Offcloud Integration**: Added support for Offcloud as a debrid provider
+- **Advanced Language Filtering**: Implemented comprehensive language filtering with:
+  - Required languages (must contain at least one)
+  - Preferred languages (boosts ranking score)
+  - Excluded languages (filters out completely)
+  - Support for 44+ languages including Arabic, Bengali, Chinese, Hindi, Japanese, Korean, etc.
+- **Multi-language Support**: Added pattern matching for multi/dual audio releases
+
+## 🐛 Fixed
+
+- **Deduplicator Bug**: Fixed deduplicator in filtering pipeline to properly handle torrents with missing info_hashes
+- Previously, torrents without info_hashes were incorrectly treated as duplicates and filtered out
+
+## 🗑️ Removed
+
+- Removed "scrape debrid account torrents" functionality from UI and backend
+- Removed "multi language" checkbox from settings UI (replaced by comprehensive language filtering)
+- Cleaned up debrid client `list_user_torrents` methods across all providers
+
+## 🔧 Enhanced
+
+- **Ranking System**: Added preferred language bonuses to scoring algorithm
+- **Language Patterns**: Expanded language pattern matching to cover all UI languages
+- **Pipeline Filtering**: Enhanced filtering pipeline with three-tier language filtering system
+
+## 📝 Technical Changes
+
+- Updated `app/filtering/matchers.py` with comprehensive language patterns
+- Enhanced `app/filtering/pipeline.py` with required/preferred/excluded language filters
+- Updated `app/ranking/scorer.py` with language-based scoring
+- Removed deprecated `list_user_torrents` methods from debrid clients
+- Updated version to 0.2.0 in `app/config.py`
+
+---
+
 # Cauldron v0.1.1
 
 ## 🐛 Fixed
