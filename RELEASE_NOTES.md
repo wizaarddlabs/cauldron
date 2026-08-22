@@ -1,3 +1,18 @@
+# Cauldron v0.2.1
+
+## 🐛 Fixed
+
+- **Language Filtering Bug**: Fixed required, preferred, and excluded language filters not working correctly
+- The general language filter was running before more specific required/excluded filters, causing conflicts
+- Now prioritizes required/excluded language filters over the general language filter when both are set
+
+## 🔧 Technical Changes
+
+- Updated `app/filtering/pipeline.py` to skip general language filter when required or excluded languages are set
+- Updated UI version to v0.2.1 in `app/web/index.html`
+
+---
+
 # Cauldron v0.2.0
 
 ## 🎉 New Features
