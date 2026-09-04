@@ -125,11 +125,13 @@ class FilterPipeline:
                 continue
 
             # Language filter (general)
-            if not matches_language(
-                t.title,
-                languages
-            ):
-                continue
+            # Skip if required or excluded languages are set, as those are more specific
+            if not required_languages and not excluded_languages:
+                if not matches_language(
+                    t.title,
+                    languages
+                ):
+                    continue
 
             # Required languages filter (must contain at least one)
             if not matches_required_languages(
