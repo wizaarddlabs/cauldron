@@ -9,7 +9,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       ADDON_URL: https://cauldron.forthewizards.uk
-      ZILEAN_ENABLED: "true"
+      ZILEAN_ENABLED: "${ZILEAN_ENABLED:-false}"
       ZILEAN_URL: ${ZILEAN_URL:-http://zilean:8181}
       TORRIN_API_KEY: ${TORRIN_API_KEY}
     restart: unless-stopped
@@ -17,8 +17,6 @@ services:
       - cauldron-network
     depends_on:
       redis:
-        condition: service_started
-      zilean:
         condition: service_started
 
   redis:
@@ -82,6 +80,8 @@ services:
     depends_on:
       zilean-postgres:
         condition: service_healthy
+    profiles:
+      - full
 
   zilean-postgres:
     image: postgres:16-alpine
@@ -101,6 +101,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    profiles:
+      - full
 
 volumes:
   redis-data:
@@ -108,3 +110,8 @@ volumes:
 networks:
   cauldron-network:
     driver: bridge
+
+# Usage:
+# - Core setup (minimal): docker-compose --profile core up -d
+# - Full setup (with Zilean): docker-compose --profile full up -d
+# - Default (core services): docker-compose up -d

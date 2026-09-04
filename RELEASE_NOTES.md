@@ -1,3 +1,29 @@
+# Cauldron v0.3.0
+
+## 🔧 Improvements
+
+- Added reliable Offcloud file-size lookup with bounded concurrent requests.
+- Added strict Offcloud file-index validation for playback resolution.
+- Added a working `DISABLE_CACHE` option for minimal deployments.
+- Core Docker services now start by default; Zilean remains opt-in via the full profile.
+- Added regression coverage for Offcloud and cache behavior.
+
+---
+
+# Cauldron v0.2.1
+
+## 🐛 Fixed
+
+- **Language Filtering Bug**: Fixed required, preferred, and excluded language filters not working correctly
+- The general language filter was running before more specific required/excluded filters, causing conflicts
+- Now prioritizes required/excluded language filters over the general language filter when both are set
+
+## 🔧 Technical Changes
+
+- Updated `app/filtering/pipeline.py` to skip general language filter when required or excluded languages are set
+- Updated UI version to v0.2.1 in `app/web/index.html`
+
+---
 # Cauldron v0.2.0
 
 ## 🎉 New Features

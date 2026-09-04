@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     addon_id: str = "community.cauldron"
     addon_name: str = "Cauldron"
-    addon_version: str = "0.2.0"
+    addon_version: str = "0.3.0"
     addon_url: str = "http://localhost:8000"
 
     # --- Debrid provider API bases (rarely need changing) ---
@@ -28,16 +28,21 @@ class Settings(BaseSettings):
     torrin_api_base: str = "https://api.torrin.app"
     torrin_api_key: Optional[str] = None
     offcloud_api_base: str = "https://offcloud.com/api"
+    offcloud_fetch_sizes: bool = True  # Fetch file sizes via HEAD requests (adds latency)
+    offcloud_size_cache_ttl: int = 60 * 60  # 1 hour cache for file sizes
     # --- Cache ---
     redis_url: Optional[str] = Field(default=None, description="e.g. redis://localhost:6379/0")
     cache_ttl_search: int = 60 * 60       # 1 hour for scrape results (increased for high-traffic)
     cache_ttl_availability: int = 60 * 15  # 15 min for debrid-cache checks
     redis_max_memory: str = "512mb"      # Redis max memory limit for production
     redis_eviction_policy: str = "allkeys-lru"  # Evict least recently used keys
+    disable_cache: bool = False  # Allow running without Redis for minimal setup
 
     # --- Search behavior ---
     max_results_per_scraper: int = 200  # Soft limit for individual scrapers (can be exceeded)
     scrape_timeout_seconds: int = 20
+    httpx_max_connections: int = 20  # Max concurrent HTTP connections
+    httpx_max_keepalive_connections: int = 10  # Max keepalive connections
     bitsearch_enabled: bool = True
     bitsearch_api_base: str = "https://bitsearch.to/api/v1"
     bitsearch_api_key: Optional[str] = None
