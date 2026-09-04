@@ -1,3 +1,15 @@
+# Cauldron v0.3.0
+
+## 🔧 Improvements
+
+- Added reliable Offcloud file-size lookup with bounded concurrent requests.
+- Added strict Offcloud file-index validation for playback resolution.
+- Added a working `DISABLE_CACHE` option for minimal deployments.
+- Core Docker services now start by default; Zilean remains opt-in via the full profile.
+- Added regression coverage for Offcloud and cache behavior.
+
+---
+
 # Cauldron v0.2.1
 
 ## 🐛 Fixed
@@ -12,7 +24,6 @@
 - Updated UI version to v0.2.1 in `app/web/index.html`
 
 ---
-
 # Cauldron v0.2.0
 
 ## 🎉 New Features
