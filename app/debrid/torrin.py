@@ -16,6 +16,7 @@ and /rest/1.0/torrents/* + /rest/1.0/unrestrict/link for adding magnets
 and resolving playback links.
 """
 
+import logging
 from typing import Optional
 
 import httpx
@@ -23,9 +24,11 @@ import httpx
 from app.config import get_settings
 from app.debrid.base import DebridClient
 from app.models import CacheStatus, ResolveResponse
+from app.models import TorrentResult
 
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class TorrinClient(DebridClient):
@@ -40,14 +43,14 @@ class TorrinClient(DebridClient):
             "Accept": "application/json",
         }
 
-        self._timeout = 60
+        self._timeout = 20
 
     # ---------------------------------------------------------
     # CACHE CHECK
     # ---------------------------------------------------------
-    # POST /api/availability  { "hashes": [...] } -> availability keyed
-    # by hash. Real shape confirmed from a live response:
-    #   { "<hash>": { "available": bool, "files": [...] | null }, ... }
+    # Torrin's Real-Debrid-compatible endpoint returns one object per hash:
+    #   { "<hash>": { "rd": [{...}] } }
+    # A non-empty rd array means the hash is cached.
 
     async def check_cache(
         self,
@@ -66,31 +69,43 @@ class TorrinClient(DebridClient):
         if not normalized_hashes:
             return {}
 
-        url = f"{self._base}/api/availability"
+        url = (
+            f"{self._base}/rest/1.0/torrents/instantAvailability/"
+            f"{'/'.join(normalized_hashes)}"
+        )
 
         async with httpx.AsyncClient(
             timeout=self._timeout
         ) as client:
 
-            response = await client.post(
+            response = await client.get(
                 url,
                 headers=self._headers,
-                json={"hashes": normalized_hashes},
             )
 
             response.raise_for_status()
 
             data = response.json()
 
-        print(
-            "TORRIN CACHE CHECK RESPONSE:",
-            data,
-            flush=True,
+        logger.debug(
+            "Torrin cache response contained %d top-level entries",
+            len(data) if isinstance(data, (dict, list)) else 0,
         )
 
         result: dict[str, CacheStatus] = {}
 
         def _status_from_value(value) -> Optional[CacheStatus]:
+            if isinstance(value, dict) and "rd" in value:
+                return (
+                    CacheStatus.CACHED
+                    if value.get("rd")
+                    else CacheStatus.NOT_CACHED
+                )
+
+            # Torrin's RD-compatible endpoint returns {} for a cache miss.
+            if isinstance(value, dict) and not value:
+                return CacheStatus.NOT_CACHED
+
             if isinstance(value, bool):
                 return CacheStatus.CACHED if value else CacheStatus.NOT_CACHED
 
@@ -192,13 +207,64 @@ class TorrinClient(DebridClient):
             for info_hash in normalized_hashes
         }
 
-        print(
-            "TORRIN CACHE STATUS:",
-            final_result,
-            flush=True,
+        logger.info(
+            "Torrin cache status: %d cached, %d uncached, %d unknown",
+            sum(status == CacheStatus.CACHED for status in final_result.values()),
+            sum(status == CacheStatus.NOT_CACHED for status in final_result.values()),
+            sum(status == CacheStatus.UNKNOWN for status in final_result.values()),
         )
 
         return final_result
+
+    # ---------------------------------------------------------
+    # ACCOUNT SEARCH
+    # ---------------------------------------------------------
+
+    async def search_account(self) -> list[TorrentResult]:
+        """Return recent completed torrents from the Torrin account."""
+
+        url = f"{self._base}/rest/1.0/torrents"
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            response = await client.get(url, headers=self._headers)
+            response.raise_for_status()
+            data = response.json()
+
+        if not isinstance(data, list):
+            return []
+
+        results = []
+
+        for torrent in data:
+            if not isinstance(torrent, dict):
+                continue
+
+            if torrent.get("status") not in {"downloaded", "seeding"}:
+                continue
+
+            info_hash = str(torrent.get("hash", "")).strip().lower()
+            title = str(
+                torrent.get("filename")
+                or torrent.get("name")
+                or ""
+            ).strip()
+
+            if len(info_hash) != 40 or not title:
+                continue
+
+            results.append(
+                TorrentResult(
+                    title=title,
+                    info_hash=info_hash,
+                    magnet=f"magnet:?xt=urn:btih:{info_hash}",
+                    size_bytes=torrent.get("bytes"),
+                    seeders=0,
+                    source="torrin-account",
+                    indexer="Torrin Account",
+                )
+            )
+
+        return results
 
     # ---------------------------------------------------------
     # ADD MAGNET

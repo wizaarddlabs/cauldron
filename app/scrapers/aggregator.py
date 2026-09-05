@@ -7,6 +7,7 @@ from app.scrapers.base import Scraper
 from app.scrapers.public_scraper import PublicScraper
 from app.scrapers.comet import CometScraper
 from app.scrapers.mediafusion import MediaFusionScraper
+from app.debrid.torrin import TorrinClient
 
 from app.ranking.preferences import RankingPreferences
 from app.ranking.scorer import rank_results
@@ -721,6 +722,8 @@ async def search_all(
     episode: str | None = None,
     media_type: str | None = None,
     preferences: RankingPreferences | None = None,
+    account_provider: str | None = None,
+    account_api_key: str | None = None,
 ) -> list[TorrentResult]:
 
     logger.info(
@@ -747,6 +750,12 @@ async def search_all(
         )
         for scraper in _SCRAPERS
     ]
+
+    if account_provider == "torrin" and account_api_key:
+        async def search_torrin_account():
+            return await TorrinClient(account_api_key).search_account()
+
+        tasks.append(search_torrin_account())
 
     results_per_scraper = await asyncio.gather(
         *tasks
@@ -811,6 +820,17 @@ async def search_all(
 
         if existing is None:
             merged[unique_key] = result
+            continue
+
+        # A completed Torrin account job is directly playable for this user.
+        # Keep that representation if the same hash also came from a public
+        # indexer, so its account availability is not lost.
+        if (
+            getattr(result, "source", "") == "torrin-account"
+            or getattr(existing, "source", "") == "torrin-account"
+        ):
+            if getattr(result, "source", "") == "torrin-account":
+                merged[unique_key] = result
             continue
 
         # Keep the result with more seeders.

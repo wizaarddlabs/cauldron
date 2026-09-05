@@ -1,3 +1,19 @@
+# Cauldron v0.3.1
+
+## Fixed
+
+- Torrin now uses the documented instant-availability endpoint and correctly maps cached, uncached, and empty-object responses.
+- Completed Torrin account torrents are included in searches and shown as cached for the authenticated user.
+- Torrin account results are prioritized before filtering caps and preserved during deduplication.
+- Added support for `H.265` and `H.264` codec notation from Torrin filenames.
+- Series results are episode-filtered before debrid cache checks to reduce latency.
+- Added regression coverage for Torrin cache status, account scraping, provider selection, and result ordering.
+
+## Validation
+
+- Full test suite passes: 16 tests.
+
+---
 # Cauldron v0.3.0
 
 ## 🔧 Improvements

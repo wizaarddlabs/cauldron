@@ -2,6 +2,7 @@
 TorBox API client.
 Docs: https://api-docs.torbox.app/
 """
+import logging
 from typing import Optional
 
 import httpx
@@ -11,6 +12,7 @@ from app.debrid.base import DebridClient
 from app.models import CacheStatus, ResolveResponse
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class TorBoxClient(DebridClient):
@@ -26,13 +28,24 @@ class TorBoxClient(DebridClient):
             return {}
         url = f"{self._base}/torrents/checkcached"
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                url,
-                headers=self._headers,
-                params={"hash": ",".join(info_hashes), "format": "list"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            try:
+                resp = await client.get(
+                    url,
+                    headers=self._headers,
+                    params={"hash": ",".join(info_hashes), "format": "list"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except httpx.HTTPStatusError as exc:
+                logger.warning(
+                    "TorBox cache check rejected (%s): %s",
+                    exc.response.status_code,
+                    exc.response.text[:300],
+                )
+                return {h: CacheStatus.UNKNOWN for h in info_hashes}
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning("TorBox cache check failed: %s", exc)
+                return {h: CacheStatus.UNKNOWN for h in info_hashes}
 
         cached_hashes = {
             item.get("hash", "").lower() for item in data.get("data", []) if isinstance(item, dict)

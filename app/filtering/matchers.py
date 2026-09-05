@@ -262,11 +262,13 @@ CODEC_PATTERNS = {
 
     "hevc": [
         r"\bx265\b",
+        r"\bh[. ]?265\b",
         r"\bhevc\b",
     ],
 
     "h264": [
         r"\bx264\b",
+        r"\bh[. ]?264\b",
         r"\bh264\b",
     ],
 

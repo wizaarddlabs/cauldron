@@ -237,10 +237,21 @@ def _normalize_debrid_config(cfg):
     The generated Stremio configuration takes priority.
     """
 
-    if cfg.get("provider") and cfg.get("api_key"):
+    configured_provider = cfg.get("provider")
+
+    if configured_provider:
+        # A generated config is authoritative. Do not silently replace a
+        # missing/invalid key with the server-wide Torrin credential.
+        configured_key = cfg.get("api_key")
+
+        if not configured_key:
+            configured_key = cfg.get(
+                f"{configured_provider}_key"
+            )
+
         return (
-            cfg["provider"],
-            cfg["api_key"],
+            configured_provider,
+            configured_key,
         )
 
     if cfg.get("torbox_key"):
@@ -307,6 +318,24 @@ def _cache_status_label(status):
         return "⏳ Uncached"
 
     return "❔ Unknown"
+
+
+def _mark_torrin_account_results_cached(
+    cache_status_map,
+    torrents,
+):
+    """Mark completed Torrin account jobs as ready for the current user."""
+    for torrent in torrents:
+        if getattr(torrent, "source", "") == "torrin-account":
+            cache_status_map[str(torrent.info_hash).lower()] = CacheStatus.CACHED
+
+
+def _prioritize_torrin_account_results(torrents):
+    """Keep ready Torrin account results ahead of capped public results."""
+    return sorted(
+        torrents,
+        key=lambda torrent: getattr(torrent, "source", "") != "torrin-account",
+    )
 
 
 # =========================================================
@@ -477,6 +506,8 @@ async def stream(
             season=media["season"],
             episode=media["episode"],
             media_type=media["type"],
+            account_provider=provider_str,
+            account_api_key=api_key,
         )
 
     except Exception as exc:
@@ -502,6 +533,38 @@ async def stream(
         return {
             "streams": []
         }
+
+    # Narrow series results before asking the debrid provider about cache
+    # availability. This avoids sending hashes for unrelated episodes.
+    if (
+        media["type"] == "series"
+        and media["season"] is not None
+        and media["episode"] is not None
+    ):
+        season = int(media["season"])
+        episode = int(media["episode"])
+        patterns = [
+            f"s{season:02d}e{episode:02d}",
+            f"s{season}e{episode}",
+            f"{season}x{episode:02d}",
+        ]
+
+        results = [
+            torrent
+            for torrent in results
+            if any(
+                pattern in str(getattr(torrent, "title", "")).lower()
+                for pattern in patterns
+            )
+        ]
+
+        logger.info(
+            "AFTER EPISODE FILTER: %d",
+            len(results),
+        )
+
+        if not results:
+            return {"streams": []}
 
     # -----------------------------------------------------
     # CACHE CHECK
@@ -536,6 +599,15 @@ async def stream(
                         info_hashes
                     )
                 )
+
+                # Completed Torrin account jobs are playable for this user
+                # even when they are not in Torrin's shared cache index.
+                if provider_str == "torrin":
+                    _mark_torrin_account_results_cached(
+                        cache_status_map,
+                        results,
+                    )
+                    results = _prioritize_torrin_account_results(results)
 
                 cached_count = sum(
                     1
@@ -600,60 +672,17 @@ async def stream(
                     )
 
         except Exception as exc:
+            if debrid_client:
+                cache_status_map = {
+                    str(t.info_hash).lower(): CacheStatus.UNKNOWN
+                    for t in results
+                    if getattr(t, "info_hash", None)
+                }
+
             logger.exception(
                 "Cache check failed: %s",
                 exc,
             )
-
-    # -----------------------------------------------------
-    # EPISODE FILTERING
-    # -----------------------------------------------------
-
-    if (
-        media["type"] == "series"
-        and media["season"] is not None
-        and media["episode"] is not None
-    ):
-        season = int(
-            media["season"]
-        )
-
-        episode = int(
-            media["episode"]
-        )
-
-        patterns = [
-            f"s{season:02d}e{episode:02d}",
-            f"s{season}e{episode}",
-            f"{season}x{episode:02d}",
-        ]
-
-        filtered = []
-
-        for torrent in results:
-            torrent_title = str(
-                getattr(
-                    torrent,
-                    "title",
-                    "",
-                )
-            ).lower()
-
-            if any(
-                pattern.lower()
-                in torrent_title
-                for pattern in patterns
-            ):
-                filtered.append(
-                    torrent
-                )
-
-        results = filtered
-
-        logger.info(
-            "AFTER EPISODE FILTER: %d",
-            len(results),
-        )
 
     # -----------------------------------------------------
     # CACHED ONLY
