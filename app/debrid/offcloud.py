@@ -10,6 +10,9 @@ IMPORTANT:
 - A cloud request id is used to browse files and to fetch a direct
   download link for a specific file.
 """
+import asyncio
+import logging
+import time
 from typing import Optional
 
 import httpx
@@ -20,6 +23,10 @@ from app.models import CacheStatus, DebridProvider, ResolveResponse
 
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+# Simple in-memory cache for file sizes to avoid repeated HEAD requests
+_size_cache: dict[str, tuple[int, float]] = {}
 
 
 class OffcloudClient(DebridClient):
@@ -32,14 +39,60 @@ class OffcloudClient(DebridClient):
     def _url(self, path: str) -> str:
         """Build a URL with the API key as the ?key= query param."""
         return f"{self._base}/{path}?key={self.api_key}"
-    
+
     def _explore_url(self, request_id: str) -> str:
         """Build an explore URL with requestId in path."""
         return f"{self._base}/cloud/explore/{request_id}?key={self.api_key}"
-    
+
     def _download_url(self, request_id: str, file_id: str) -> str:
         """Build a download URL with requestId and fileId in path."""
-        return f"{self._base}/cloud/download/{request_id}/{file_id}?key={self.api_key}"
+        return (
+            f"{self._base}/cloud/download/{request_id}/{file_id}"
+            f"?key={self.api_key}"
+        )
+
+    async def _fetch_file_size(
+        self,
+        url: str,
+        client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+    ) -> int:
+        """
+        Fetch file size via HEAD request to the CDN URL.
+
+        Uses caching to avoid repeated HEAD requests for the same URL.
+        Returns 0 if the request fails or size cannot be determined.
+        """
+        # Check cache first
+        cached = _size_cache.get(url)
+        if cached:
+            size, expires_at = cached
+            if time.monotonic() < expires_at:
+                return size
+            del _size_cache[url]
+
+        # Skip fetching if disabled in config
+        if not settings.offcloud_fetch_sizes:
+            return 0
+
+        try:
+            async with semaphore:
+                resp = await client.head(url, follow_redirects=True)
+                resp.raise_for_status()
+
+                content_length = resp.headers.get("Content-Length")
+                if content_length:
+                    size = int(content_length)
+                    _size_cache[url] = (
+                        size,
+                        time.monotonic() + settings.offcloud_size_cache_ttl,
+                    )
+                    return size
+
+        except (httpx.HTTPError, TypeError, ValueError) as exc:
+            logger.warning("Offcloud HEAD request failed for %s: %s", url, exc)
+
+        return 0
 
     async def check_cache(self, info_hashes: list[str]) -> dict[str, CacheStatus]:
         """
@@ -49,11 +102,11 @@ class OffcloudClient(DebridClient):
         """
         if not info_hashes:
             return {}
-        
+
         url = self._url("cache")
         
         result = {}
-        
+
         # Offcloud accepts hashes as a JSON array in POST data
         async with httpx.AsyncClient(timeout=30) as client:
             try:
@@ -79,7 +132,7 @@ class OffcloudClient(DebridClient):
                         
             except Exception as e:
                 # On error, return unknown for all hashes
-                print(f"Offcloud cache check error: {e}", flush=True)
+                logger.warning("Offcloud cache check failed: %s", e)
                 return {h: CacheStatus.UNKNOWN for h in info_hashes}
         
         return result
@@ -114,7 +167,7 @@ class OffcloudClient(DebridClient):
 
     async def list_files(self, torrent_id: str) -> list[dict]:
         """List the files stored within a cloud request."""
-        # According to Offcloud API docs, explore is a GET request with requestId in URL path
+        # According to Offcloud API docs, explore is a GET request with requestId in URL path.
         url = self._explore_url(torrent_id)
 
         async with httpx.AsyncClient(timeout=30) as client:
@@ -125,16 +178,34 @@ class OffcloudClient(DebridClient):
         # Offcloud returns a simple array of download URLs, not file objects
         if isinstance(data, list):
             # Convert URLs to file objects with index as ID
+            file_urls = [file_url for file_url in data if isinstance(file_url, str)]
+            semaphore = asyncio.Semaphore(8)
+
+            async with httpx.AsyncClient(timeout=10) as client:
+                sizes = await asyncio.gather(
+                    *(
+                        self._fetch_file_size(
+                            file_url,
+                            client,
+                            semaphore,
+                        )
+                        for file_url in file_urls
+                    )
+                )
+
             return [
                 {
-                    "id": str(i),  # Use index as file ID
-                    "name": url.split("/")[-1].replace("%20", " ").replace("%5B", "[").replace("%5D", "]"),
-                    "size": 0,  # Size not provided in response
-                    "url": url  # Store the actual URL for download
+                    "id": str(index),
+                    "name": file_url.rsplit("/", 1)[-1]
+                    .replace("%20", " ")
+                    .replace("%5B", "[")
+                    .replace("%5D", "]"),
+                    "size": size,
+                    "url": file_url,
                 }
-                for i, url in enumerate(data)
+                for index, (file_url, size) in enumerate(zip(file_urls, sizes))
             ]
-        
+
         # Fallback for other response formats
         files = data.get("files", []) if isinstance(data, dict) else []
         if not isinstance(files, list):
@@ -159,11 +230,10 @@ class OffcloudClient(DebridClient):
             if not files:
                 raise RuntimeError("Torrent not found or ready on Offcloud")
 
-            idx = (
-                file_index
-                if file_index is not None and file_index < len(files)
-                else 0
-            )
+            if file_index is not None and not 0 <= file_index < len(files):
+                raise ValueError(f"Invalid Offcloud file index: {file_index}")
+
+            idx = file_index if file_index is not None else 0
 
             chosen = files[idx]
 
@@ -198,9 +268,8 @@ class OffcloudClient(DebridClient):
             )
 
         except Exception as e:
-            print(
-                f"Error getting Offcloud playback link: {e}, "
-                "torrent may not be ready",
-                flush=True,
+            logger.warning(
+                "Error getting Offcloud playback link: %s; torrent may not be ready",
+                e,
             )
             raise

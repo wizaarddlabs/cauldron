@@ -18,6 +18,8 @@ _cache_stats = {"hits": 0, "misses": 0}
 
 def _get_redis():
     global _redis_client
+    if settings.disable_cache:
+        return None
     if _redis_client is None and settings.redis_url:
         import redis.asyncio as redis
 
@@ -26,6 +28,9 @@ def _get_redis():
 
 
 async def cache_get(key: str) -> Optional[Any]:
+    if settings.disable_cache:
+        return None
+
     redis_client = _get_redis()
     if redis_client:
         raw = await redis_client.get(key)
@@ -49,6 +54,9 @@ async def cache_get(key: str) -> Optional[Any]:
 
 
 async def cache_set(key: str, value: Any, ttl_seconds: int) -> None:
+    if settings.disable_cache:
+        return
+
     raw = json.dumps(value)
     redis_client = _get_redis()
     if redis_client:

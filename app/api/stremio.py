@@ -694,6 +694,19 @@ async def stream(
             FilterPipeline
         )
 
+        logger.info(
+            "FILTER CONFIG - required_languages: %s",
+            cfg.get("required_languages", [])
+        )
+        logger.info(
+            "FILTER CONFIG - excluded_languages: %s",
+            cfg.get("excluded_languages", [])
+        )
+        logger.info(
+            "FILTER CONFIG - language: %s",
+            cfg.get("language", [])
+        )
+
         pipeline = FilterPipeline(
             cfg
         )
