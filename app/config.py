@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     addon_id: str = "community.cauldron"
     addon_name: str = "Cauldron"
-    addon_version: str = "0.3.4"
+    addon_version: str = "0.4.0"
     addon_url: str = "http://localhost:8000"
     admin_api_key: Optional[str] = Field(
         default=None,

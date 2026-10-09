@@ -1,3 +1,11 @@
+# Cauldron v0.4.0
+
+## Improved
+
+- Added responsive layouts and more touch-friendly controls for mobile users.
+
+---
+
 # Cauldron v0.3.4
 
 ## Improved
