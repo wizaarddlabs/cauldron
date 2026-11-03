@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import re
+import time
 
+from app.config import get_settings
 from app.models import TorrentResult
 from app.scrapers.base import Scraper
 from app.scrapers.public_scraper import PublicScraper
@@ -14,6 +16,7 @@ from app.ranking.scorer import rank_results
 
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 _SCRAPERS: list[Scraper] = [
@@ -681,32 +684,74 @@ async def _safe_search(
     episode: str | None = None,
     media_type: str | None = None,
 ) -> list[TorrentResult]:
-
+    started_at = time.perf_counter()
     try:
-        results = await scraper.search(
-            query,
-            imdb_id=imdb_id,
-            season=season,
-            episode=episode,
-            media_type=media_type,
+        results = await asyncio.wait_for(
+            scraper.search(
+                query,
+                imdb_id=imdb_id,
+                season=season,
+                episode=episode,
+                media_type=media_type,
+            ),
+            timeout=settings.scrape_timeout_seconds,
         )
 
         logger.info(
-            "%s returned %d raw results for %r",
+            "%s returned %d raw results for %r in %.2fs",
             scraper.name,
             len(results),
             query,
+            time.perf_counter() - started_at,
         )
 
         return results
 
-    except Exception:
-        logger.exception(
-            "Scraper %s failed",
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Scraper %s timed out after %.2fs for %r",
             scraper.name,
+            time.perf_counter() - started_at,
+            query,
+        )
+        return []
+    except Exception as exc:
+        logger.warning(
+            "Scraper %s failed after %.2fs (%s)",
+            scraper.name,
+            time.perf_counter() - started_at,
+            type(exc).__name__,
         )
 
         return []
+
+
+async def _safe_torrin_account_search(api_key: str) -> list[TorrentResult]:
+    started_at = time.perf_counter()
+    try:
+        results = await asyncio.wait_for(
+            TorrinClient(api_key).search_account(),
+            timeout=settings.scrape_timeout_seconds,
+        )
+        logger.info(
+            "Torrin account search returned %d results in %.2fs",
+            len(results),
+            time.perf_counter() - started_at,
+        )
+        return results
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Torrin account search timed out after %.2fs",
+            time.perf_counter() - started_at,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Torrin account search failed after %.2fs (%s)",
+            time.perf_counter() - started_at,
+            type(exc).__name__,
+        )
+
+    return []
 
 
 # ---------------------------------------------------------
@@ -752,10 +797,7 @@ async def search_all(
     ]
 
     if account_provider == "torrin" and account_api_key:
-        async def search_torrin_account():
-            return await TorrinClient(account_api_key).search_account()
-
-        tasks.append(search_torrin_account())
+        tasks.append(_safe_torrin_account_search(account_api_key))
 
     results_per_scraper = await asyncio.gather(
         *tasks

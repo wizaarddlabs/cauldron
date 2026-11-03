@@ -285,6 +285,8 @@ Cauldron currently supports:
 * AllDebrid
 * Premiumize
 * TorBox
+* Torrin
+* Offcloud
 
 Adding another provider requires implementing the `DebridClient` interface in:
 

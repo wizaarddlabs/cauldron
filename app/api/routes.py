@@ -6,6 +6,7 @@ resolve a magnet to a playable link, and manage ranking preferences.
 from fastapi import APIRouter, Header, HTTPException, Query
 import hashlib
 import json
+import logging
 
 
 from app.cache.store import cache_get, cache_set, get_cache_stats
@@ -31,6 +32,8 @@ from app.ranking.store import (
 )
 from app.security import require_admin_api_key
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api",
@@ -197,9 +200,20 @@ async def _availability(
     cached_map = await cache_get(cache_key)
 
     if cached_map is None:
-        status_map = await client.check_cache(
-            [torrent.info_hash for torrent in torrents]
-        )
+        try:
+            status_map = await client.check_cache(
+                [torrent.info_hash for torrent in torrents]
+            )
+        except Exception as exc:
+            logger.warning(
+                "Debrid availability check failed for %s (%s)",
+                provider.value,
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Debrid provider availability check failed",
+            ) from exc
 
         cached_map = {
             key: value.value
@@ -279,30 +293,28 @@ async def availability(
 async def resolve(
     req: ResolveRequest,
 ):
-
-    client = get_debrid_client(
-        req.provider,
-        req.api_key,
-    )
-
     try:
-
+        client = get_debrid_client(
+            req.provider,
+            req.api_key,
+        )
         torrent_id = await client.add_magnet(
             req.magnet
         )
-
 
         return await client.get_playback_link(
             torrent_id,
             req.file_index,
         )
-
-
     except Exception as exc:
-
+        logger.warning(
+            "Debrid resolve failed for %s (%s)",
+            req.provider.value,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=502,
-            detail=str(exc),
+            detail="Debrid provider resolve failed",
         ) from exc
 
 

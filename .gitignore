@@ -28,3 +28,8 @@ data/
 *.before-*
 zilean-new/
 zilean/
+
+# Large files / archives
+zilean.dump
+*.tar.gz
+docker-compose.yml.pre-vps

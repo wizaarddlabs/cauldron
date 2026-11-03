@@ -1,8 +1,9 @@
 services:
   app:
+    container_name: cauldron
     build: .
     ports:
-      - "8008:8000"
+      - "127.0.0.1:8008:8000"
     volumes:
       - ./app:/srv/app
       - ./data:/data
@@ -12,35 +13,49 @@ services:
       ZILEAN_ENABLED: "${ZILEAN_ENABLED:-false}"
       ZILEAN_URL: ${ZILEAN_URL:-http://zilean:8181}
       TORRIN_API_KEY: ${TORRIN_API_KEY}
-    restart: unless-stopped
+    restart: always
     networks:
       - cauldron-network
+      - npm_default
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
 
   redis:
+    container_name: cauldron-redis
     image: redis:7-alpine
-    ports:
-      - "6380:6379"
     command: >
       sh -c "redis-server
       --maxmemory ${REDIS_MAX_MEMORY:-512mb}
       --maxmemory-policy ${REDIS_EVICTION_POLICY:-allkeys-lru}"
-    restart: unless-stopped
+    restart: always
     networks:
       - cauldron-network
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   zilean:
+    container_name: cauldron-zilean
     build:
       context: ./zilean
       dockerfile: Dockerfile
     image: cauldron-zilean:latest
-    ports:
-      - "8181:8181"
-    restart: unless-stopped
+    restart: always
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8181/', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
     environment:
       POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
 
@@ -77,15 +92,10 @@ services:
     networks:
       - cauldron-network
 
-    depends_on:
-      zilean-postgres:
-        condition: service_healthy
-    profiles:
-      - full
-
   zilean-postgres:
+    container_name: cauldron-postgres
     image: postgres:16-alpine
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_DB: zilean
       POSTGRES_USER: zilean
@@ -101,8 +111,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    profiles:
-      - full
 
 volumes:
   redis-data:
@@ -110,8 +118,5 @@ volumes:
 networks:
   cauldron-network:
     driver: bridge
-
-# Usage:
-# - Core setup (minimal): docker-compose --profile core up -d
-# - Full setup (with Zilean): docker-compose --profile full up -d
-# - Default (core services): docker-compose up -d
+  npm_default:
+    external: true
