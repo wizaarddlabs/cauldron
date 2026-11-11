@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -16,7 +18,7 @@ from app.security import require_admin_api_key
 router = APIRouter(tags=["web"])
 
 templates = Jinja2Templates(
-    directory="app/web/templates"
+    directory=Path(__file__).parent / "templates"
 )
 
 

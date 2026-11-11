@@ -8,6 +8,8 @@ from typing import Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app import __version__
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -17,7 +19,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     addon_id: str = "community.cauldron"
     addon_name: str = "Cauldron"
-    addon_version: str = "0.4.0"
+    addon_version: str = __version__
     addon_url: str = "http://localhost:8000"
     admin_api_key: Optional[str] = Field(
         default=None,
@@ -45,8 +47,8 @@ class Settings(BaseSettings):
     # --- Search behavior ---
     max_results_per_scraper: int = 200  # Soft limit for individual scrapers (can be exceeded)
     scrape_timeout_seconds: int = 20
-    httpx_max_connections: int = 20  # Max concurrent HTTP connections
-    httpx_max_keepalive_connections: int = 10  # Max keepalive connections
+    httpx_max_connections: int = 100  # Max concurrent connections in the shared HTTP pool
+    httpx_max_keepalive_connections: int = 20  # Idle connections kept open for reuse
     bitsearch_enabled: bool = True
     bitsearch_api_base: str = "https://bitsearch.to/api/v1"
     bitsearch_api_key: Optional[str] = None

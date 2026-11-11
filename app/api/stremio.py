@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Optional
 
-import httpx
+from app.http_client import http_session
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
@@ -55,11 +55,45 @@ CINEMETA_URL = (
 
 PLAYBACK_CACHE_TTL = 300  # 5 minutes
 
+# Upper bound on remembered playback URLs; oldest entries are evicted first.
+PLAYBACK_CACHE_MAX_ENTRIES = 2000
+
 _playback_cache: dict[str, tuple[str, float]] = {}
 
 _playback_locks: dict[str, asyncio.Lock] = {}
 
 _playback_cache_lock = asyncio.Lock()
+
+
+def _prune_playback_state() -> None:
+    """
+    Drop expired playback URLs and idle per-key locks.
+
+    Without this, every distinct (config, hash) pair ever played would
+    stay in memory for the lifetime of the process.
+    """
+
+    now = time.monotonic()
+
+    for key in [
+        key
+        for key, (_, expires_at) in _playback_cache.items()
+        if expires_at <= now
+    ]:
+        _playback_cache.pop(key, None)
+
+    overflow = len(_playback_cache) - PLAYBACK_CACHE_MAX_ENTRIES
+    if overflow > 0:
+        # Dicts keep insertion order, so the first keys are the oldest.
+        for key in list(_playback_cache)[:overflow]:
+            _playback_cache.pop(key, None)
+
+    for key in [
+        key
+        for key, lock in _playback_locks.items()
+        if not lock.locked() and key not in _playback_cache
+    ]:
+        _playback_locks.pop(key, None)
 
 
 async def _get_playback_lock(key: str) -> asyncio.Lock:
@@ -71,6 +105,8 @@ async def _get_playback_lock(key: str) -> asyncio.Lock:
     """
 
     async with _playback_cache_lock:
+        _prune_playback_state()
+
         lock = _playback_locks.get(key)
 
         if lock is None:
@@ -107,10 +143,48 @@ def _cache_playback_url(
     Cache a resolved playback URL.
     """
 
+    _playback_cache.pop(key, None)
     _playback_cache[key] = (
         playback_url,
         time.monotonic() + PLAYBACK_CACHE_TTL,
     )
+    _prune_playback_state()
+
+
+# =========================================================
+# LOG REDACTION
+# =========================================================
+
+
+def _mask_config_id(config: str) -> str:
+    """
+    Shorten a config ID for logging.
+
+    The config ID in an addon URL grants use of the owner's debrid
+    account, so it must never be written to logs in full.
+    """
+
+    if len(config) <= 6:
+        return "***"
+
+    return f"{config[:6]}..."
+
+
+def _redact(value: object, *secrets: Optional[str]) -> str:
+    """
+    Render ``value`` as text with any of ``secrets`` masked out.
+
+    Provider errors (e.g. httpx status errors) often embed the request
+    URL, which for some providers carries the API key as a query param.
+    """
+
+    text = str(value)
+
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "***")
+
+    return text
 
 
 # =========================================================
@@ -146,7 +220,7 @@ async def resolve_media(type_: str, id_: str):
     )
 
     try:
-        async with httpx.AsyncClient(
+        async with http_session(
             timeout=15
         ) as client:
             response = await client.get(url)
@@ -404,23 +478,11 @@ async def stream(
     type: str,
     id: str,
 ):
-    logger.info("")
     logger.info(
-        "========================================"
-    )
-    logger.info(
-        "=== CAULDRON STREAM REQUEST ==="
-    )
-    logger.info(
-        "TYPE: %s",
+        "Stream request: type=%s id=%s config=%s",
         type,
-    )
-    logger.info(
-        "ID: %s",
         id,
-    )
-    logger.info(
-        "========================================"
+        _mask_config_id(config),
     )
 
     # -----------------------------------------------------
@@ -808,7 +870,7 @@ async def stream(
         request
     )
 
-    logger.info(
+    logger.debug(
         "External base URL: %s",
         base_url,
     )
@@ -989,9 +1051,12 @@ async def stream(
                     },
                 }
 
-                logger.info(
-                    "PLAYBACK URL: %s",
-                    stream_url,
+                logger.debug(
+                    "Playback URL: %s",
+                    stream_url.replace(
+                        config,
+                        _mask_config_id(config),
+                    ),
                 )
 
             else:
@@ -1077,27 +1142,11 @@ async def playback(
     locking to prevent duplicate debrid transfers.
     """
 
-    logger.info("")
     logger.info(
-        "========================================"
-    )
-    logger.info(
-        "=== CAULDRON PLAYBACK REQUEST ==="
-    )
-    logger.info(
-        "METHOD: %s",
+        "Playback request: method=%s hash=%s config=%s",
         request.method,
-    )
-    logger.info(
-        "CONFIG: %s",
-        config,
-    )
-    logger.info(
-        "HASH: %s",
         info_hash,
-    )
-    logger.info(
-        "========================================"
+        _mask_config_id(config),
     )
 
     # -----------------------------------------------------
@@ -1272,16 +1321,16 @@ async def playback(
             )
 
         except Exception as exc:
-            logger.exception(
-                "Unable to initialize "
-                "debrid provider"
+            logger.error(
+                "Unable to initialize debrid provider: %s",
+                _redact(exc, api_key),
             )
 
             raise HTTPException(
                 status_code=500,
                 detail=(
                     f"Unable to initialize "
-                    f"debrid provider: {exc}"
+                    f"debrid provider: {_redact(exc, api_key)}"
                 ),
             )
 
@@ -1316,16 +1365,17 @@ async def playback(
             )
 
         except Exception as exc:
-            logger.exception(
-                "Failed to add magnet to %s",
+            logger.error(
+                "Failed to add magnet to %s: %s",
                 provider_str,
+                _redact(exc, api_key),
             )
 
             raise HTTPException(
                 status_code=502,
                 detail=(
                     f"Failed to add torrent: "
-                    f"{exc}"
+                    f"{_redact(exc, api_key)}"
                 ),
             )
 
@@ -1394,7 +1444,7 @@ async def playback(
                 )
 
             except Exception as exc:
-                last_error = exc
+                last_error = _redact(exc, api_key)
 
                 logger.info(
                     "Playback not ready "
