@@ -8,7 +8,7 @@ Cauldron now supports multiple deployment profiles to streamline the container s
 **Best for:** Basic functionality, resource-constrained environments, testing
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 **Containers:**
@@ -25,7 +25,7 @@ docker-compose up -d
 **Best for:** Production use, maximum quality results
 
 ```bash
-docker-compose --profile full up -d
+docker compose --profile full up -d
 ```
 
 **Containers:**
@@ -40,13 +40,40 @@ docker-compose --profile full up -d
 - Zilean DMM enhancement for better quality matching
 - Higher resource usage but better results
 
-### 3. Backward Compatible (Default)
+The full profile builds Zilean from `./zilean`, which is not part of this
+repository: check out the Zilean source there first. To always start the full
+stack, set `COMPOSE_PROFILES=full` in `.env`.
+
+### Host-specific overrides
+
+`docker-compose.yml` is kept portable. Anything specific to one server goes in
+`docker-compose.override.yml`, which Compose merges automatically and git
+ignores. Start from the example:
+
 ```bash
-docker-compose up -d
+cp docker-compose.override.example.yml docker-compose.override.yml
 ```
 
-This starts the core app and Redis services. Add `--profile full` to include
-Zilean and PostgreSQL.
+The example publishes the app on `127.0.0.1:8008`, joins the external
+`npm_default` network used by Nginx Proxy Manager, and live-mounts `./app`
+(read-only) so `git pull && docker compose restart app` deploys without a
+rebuild.
+
+### Upgrading an existing deployment
+
+Before pulling this version on a server that used the old all-in-one compose
+file:
+
+1. Create `docker-compose.override.yml` as above (adjust port/network).
+2. Make sure `.env` sets `ADDON_URL` (and `ADMIN_API_KEY` if you use shared
+   ranking settings) — these are no longer hardcoded in `docker-compose.yml`.
+3. If you run Zilean, add `COMPOSE_PROFILES=full` to `.env`.
+4. Rebuild: `docker compose up -d --build`.
+
+The image now runs as an unprivileged `cauldron` user (uid 10001). On start the
+entrypoint takes ownership of `/data`, `cauldron.db*`, `cauldron.key` and
+`ranking_preferences.json`; it does not touch other directories such as
+`data/zilean-postgres`.
 
 ## Environment Variables
 
@@ -55,10 +82,13 @@ Zilean and PostgreSQL.
 ADDON_URL=https://your-domain.com
 TORRIN_API_KEY=your_torrin_key  # Optional
 ADMIN_API_KEY=choose_a_long_random_value  # Enables shared ranking settings writes
+CAULDRON_BIND=127.0.0.1  # Host interface the app is published on
+CAULDRON_PORT=8000       # Host port
 ```
 
 ### Full Setup Additional Variables
 ```bash
+COMPOSE_PROFILES=full
 ZILEAN_ENABLED=true
 ZILEAN_POSTGRES_PASSWORD=secure_password
 GITHUB_TOKEN=your_github_token  # For DMM hashlists
@@ -99,12 +129,13 @@ GITHUB_TOKEN=your_github_token  # For DMM hashlists
 
 To switch from Core to Full setup:
 
-1. Stop current setup: `docker-compose down`
+1. Stop current setup: `docker compose down`
 2. Set environment variables for Zilean
-3. Start with full profile: `docker-compose --profile full up -d`
+3. Start with full profile: `docker compose --profile full up -d`
 
 To switch from Full to Core setup:
 
-1. Stop current setup: `docker-compose down`
-2. Start with core profile: `docker-compose --profile core up -d`
-3. (Optional) Remove Zilean data: `docker volume rm cauldron_redis-data` (careful!)
+1. Stop current setup: `docker compose down`
+2. Remove `COMPOSE_PROFILES=full` from `.env` (if set) and set `ZILEAN_ENABLED=false`
+3. Start the core stack: `docker compose up -d`
+4. (Optional) Remove Zilean data: `rm -rf data/zilean-postgres` (careful, irreversible!)

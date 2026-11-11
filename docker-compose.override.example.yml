@@ -1,0 +1,23 @@
+# Example host-specific overrides (e.g. a VPS behind Nginx Proxy Manager).
+#
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+#
+# `docker compose` merges docker-compose.override.yml automatically. The real
+# override file is gitignored so each host keeps its own settings. Put
+# ADDON_URL, ADMIN_API_KEY etc. in .env.
+
+services:
+  app:
+    ports: !override
+      - "127.0.0.1:8008:8000"
+    volumes:
+      # Live-mount the source so `git pull && docker compose restart app`
+      # deploys without rebuilding the image.
+      - ./app:/srv/app:ro
+    networks:
+      - cauldron-network
+      - npm_default
+
+networks:
+  npm_default:
+    external: true

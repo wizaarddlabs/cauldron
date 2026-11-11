@@ -319,9 +319,20 @@ The API will be available at:
 http://localhost:8000
 ```
 
-The Docker deployment includes the services required by the enabled Cauldron features.
+The default stack runs the app and Redis. The app is published on
+`127.0.0.1:8000`; change this with `CAULDRON_BIND` / `CAULDRON_PORT` in `.env`,
+and set `ADDON_URL` to the address Stremio will use.
 
-Optional services such as Zilean can be enabled through the environment configuration.
+The optional Zilean + PostgreSQL services start with the `full` profile
+(`docker compose --profile full up -d`, or `COMPOSE_PROFILES=full` in `.env`).
+
+Host-specific settings (extra networks, a different port, live-mounting the
+source) belong in a gitignored `docker-compose.override.yml`; see
+`docker-compose.override.example.yml` and [DEPLOYMENT.md](DEPLOYMENT.md).
+
+The container runs as an unprivileged `cauldron` user. On start-up it takes
+ownership of its own files in `/data` (`cauldron.db`, `cauldron.key`,
+`ranking_preferences.json`), so existing root-owned data keeps working.
 
 ---
 
@@ -441,12 +452,23 @@ python -m venv .venv
 
 source .venv/bin/activate
 
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 cp .env.example .env
 
 uvicorn app.main:app --reload
 ```
+
+Run the same checks as CI before pushing:
+
+```bash
+ruff check .
+pytest
+```
+
+`requirements.txt` holds runtime dependencies only; test and lint tools live in
+`requirements-dev.txt`. The release version is defined once, in
+`app/__init__.py`.
 
 ---
 
@@ -454,21 +476,40 @@ uvicorn app.main:app --reload
 
 ```text
 app/
+├── __init__.py          # __version__
 ├── main.py
 ├── config.py
 ├── models.py
+├── http_client.py       # shared, pooled outbound HTTP client
+├── logging_utils.py     # secret / config-ID redaction for logs
 │
 ├── api/
 │   ├── routes.py
-│   └── stremio.py
+│   ├── stremio.py       # Stremio stream + playback routes
+│   ├── metadata.py      # Cinemeta lookups
+│   ├── playback_cache.py
+│   └── stream_format.py # torrent -> Stremio stream objects
 │
 ├── scrapers/
 │   ├── base.py
+│   ├── aggregator.py
+│   ├── title_matching.py
 │   ├── public_scraper.py
-│   ├── torrin.py
-│   └── aggregator.py
+│   ├── public/          # one module per public source
+│   │   ├── common.py
+│   │   ├── bitsearch.py
+│   │   ├── eztv.py
+│   │   ├── nyaa.py
+│   │   ├── tpb.py
+│   │   ├── x1337.py
+│   │   ├── yts.py
+│   │   └── zilean.py
+│   ├── comet.py
+│   └── mediafusion.py
 │
 ├── filtering/
+│   ├── pipeline.py
+│   ├── matchers.py
 │   └── sorting.py
 │
 ├── ranking/
@@ -481,6 +522,8 @@ app/
 │   ├── alldebrid.py
 │   ├── premiumize.py
 │   ├── torbox.py
+│   ├── offcloud.py
+│   ├── torrin.py
 │   └── factory.py
 │
 └── cache/
@@ -519,6 +562,9 @@ Implements the Stremio addon protocol:
 ```
 
 It is responsible for converting Cauldron results into Stremio-compatible streams and playback URLs.
+Supporting modules: `metadata.py` (Cinemeta lookups), `stream_format.py`
+(building stream objects) and `playback_cache.py` (short-lived playback URL
+cache with per-torrent locks).
 
 ---
 
@@ -536,13 +582,15 @@ Defines the scraper interface.
 public_scraper.py
 ```
 
-Contains the built-in public torrent source integrations.
+Composes the built-in public torrent sources. Each source lives in its own
+module under `app/scrapers/public/` as a mixin that adds one `_search_*`
+method.
 
 ```text
-torrin.py
+title_matching.py
 ```
 
-Provides Torrin integration.
+Strict title / year / episode validation applied to every scraper's results.
 
 ```text
 aggregator.py
@@ -615,6 +663,12 @@ Then register it in:
 ```text
 app/scrapers/aggregator.py
 ```
+
+For a simple public site, you can instead add a mixin module under
+`app/scrapers/public/` and include it in `PublicScraper`.
+
+Make outbound requests with `app.http_client.http_session()` rather than
+creating an `httpx.AsyncClient`, so connections are pooled and reused.
 
 The scraper should return `TorrentResult` objects.
 
@@ -699,7 +753,9 @@ or:
 ZILEAN_ENABLED=false
 ```
 
-Zilean remains disabled by default in `.env.example`.
+Zilean remains disabled by default in `.env.example`. The bundled Zilean
+services only start with the Compose `full` profile and expect the Zilean
+source checked out at `./zilean`.
 
 ---
 
