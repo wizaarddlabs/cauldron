@@ -9,6 +9,11 @@ Configs are stored (encrypted) in /data/cauldron.db, so run this where the app's
     docker compose exec app python scripts/make_config.py realdebrid YOUR_API_KEY
     docker compose exec app python scripts/make_config.py p2p
 
+Several providers, highest priority first (add --all to list one stream per
+provider instead of picking the first that has a torrent cached):
+
+    docker compose exec app python scripts/make_config.py realdebrid KEY1 torbox KEY2
+
 The URL's host comes from ADDON_URL.
 """
 
@@ -32,21 +37,37 @@ def main() -> int:
         print("providers: p2p | " + " | ".join(PROVIDERS))
         return 0 if args else 1
 
-    provider = args[0].lower()
+    stream_mode = "all" if "--all" in args else "best"
+    args = [arg for arg in args if arg != "--all"]
 
-    if provider == "p2p":
-        if len(args) != 1:
-            print("p2p takes no API key.", file=sys.stderr)
-            return 1
-        config = {"provider": "p2p", "api_key": None}
-    elif provider in PROVIDERS:
-        if len(args) != 2 or not args[1].strip():
-            print(f"Usage: make_config.py {provider} <api_key>", file=sys.stderr)
-            return 1
-        config = {"provider": provider, "api_key": args[1].strip()}
+    if args == ["p2p"]:
+        config = {"provider": "p2p", "api_key": None, "providers": []}
     else:
-        print(f"Unknown provider {provider!r}. Use: p2p | {' | '.join(PROVIDERS)}", file=sys.stderr)
-        return 1
+        if not args or len(args) % 2:
+            print("Give each provider followed by its API key.", file=sys.stderr)
+            return 1
+
+        accounts = []
+        for provider, api_key in zip(args[::2], args[1::2], strict=True):
+            provider = provider.lower()
+            if provider not in PROVIDERS:
+                print(f"Unknown provider {provider!r}. Use: p2p | {' | '.join(PROVIDERS)}", file=sys.stderr)
+                return 1
+            if any(existing == provider for existing, _ in accounts):
+                print(f"{provider} is listed more than once.", file=sys.stderr)
+                return 1
+            if not api_key.strip():
+                print(f"Missing API key for {provider}.", file=sys.stderr)
+                return 1
+            accounts.append((provider, api_key.strip()))
+
+        config = {
+            "providers": [{"provider": p, "api_key": k} for p, k in accounts],
+            "stream_mode": stream_mode,
+            # First account in the single-provider fields older versions read.
+            "provider": accounts[0][0],
+            "api_key": accounts[0][1],
+        }
 
     config_id = save_config(config)
     base_url = get_settings().addon_url.rstrip("/")

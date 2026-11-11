@@ -4,6 +4,15 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
+from app.api.debrid_accounts import (
+    STREAM_MODE_BEST,
+    STREAM_MODES,
+    DebridAccount,
+    accounts_for_torrent,
+    accounts_from_config,
+    check_all_caches,
+    combine_cache_status,
+)
 from app.api.metadata import resolve_media
 from app.api.playback_cache import (
     PLAYBACK_CACHE_TTL,
@@ -149,6 +158,28 @@ def _normalize_debrid_config(cfg):
     return None, None
 
 
+def _configured_accounts(cfg) -> list[tuple[str, str]]:
+    """
+    All debrid (provider, api_key) pairs for a config, in priority order.
+
+    Configs created since multi-provider support store a ``providers`` list;
+    older ones use the single-provider fields via _normalize_debrid_config.
+    An empty list means direct P2P streams.
+    """
+
+    accounts = accounts_from_config(cfg)
+
+    if accounts is not None:
+        return accounts
+
+    provider, api_key = _normalize_debrid_config(cfg)
+
+    if provider and api_key:
+        return [(provider, api_key)]
+
+    return []
+
+
 # =========================================================
 # CACHE LABEL
 # =========================================================
@@ -276,42 +307,44 @@ async def stream(
 
     cfg = _decode_config(config)
 
-    provider_str, api_key = (
-        _normalize_debrid_config(cfg)
-    )
+    accounts: list[DebridAccount] = []
 
-    debrid_client = None
-
-    if provider_str and api_key:
+    for provider_str, api_key in _configured_accounts(cfg):
         try:
-            provider = DebridProvider(
-                provider_str
+            client = get_debrid_client(
+                DebridProvider(provider_str),
+                api_key,
             )
-
-            debrid_client = (
-                get_debrid_client(
-                    provider,
-                    api_key,
-                )
-            )
-
-            logger.info(
-                "Using debrid provider: %s",
-                provider_str,
-            )
-
         except Exception as exc:
             logger.warning(
-                "Unable to initialize debrid "
-                "provider %s: %s",
+                "Unable to initialize debrid provider %s: %s",
                 provider_str,
-                exc,
+                redact_value(exc, api_key),
             )
+            continue
 
+        accounts.append(
+            DebridAccount(provider_str, api_key, client)
+        )
+
+    if accounts:
+        logger.info(
+            "Using debrid providers: %s",
+            ", ".join(account.provider for account in accounts),
+        )
     else:
         logger.info(
             "No debrid credentials configured"
         )
+
+    torrin_account = next(
+        (account for account in accounts if account.provider == "torrin"),
+        None,
+    )
+
+    stream_mode = cfg.get("stream_mode")
+    if stream_mode not in STREAM_MODES:
+        stream_mode = STREAM_MODE_BEST
 
     # -----------------------------------------------------
     # SEARCH
@@ -324,8 +357,13 @@ async def stream(
             season=media["season"],
             episode=media["episode"],
             media_type=media["type"],
-            account_provider=provider_str,
-            account_api_key=api_key,
+            # Only Torrin offers an account-history search.
+            account_provider=(
+                "torrin" if torrin_account else None
+            ),
+            account_api_key=(
+                torrin_account.api_key if torrin_account else None
+            ),
         )
 
     except Exception as exc:
@@ -389,117 +427,60 @@ async def stream(
     # -----------------------------------------------------
 
     cache_status_map = {}
+    provider_cache_maps: dict[str, dict] = {}
 
-    if debrid_client:
-        try:
-            info_hashes = [
-                str(
-                    t.info_hash
-                ).lower()
-                for t in results
-                if getattr(
-                    t,
-                    "info_hash",
-                    None,
-                )
-            ]
+    if accounts:
+        info_hashes = [
+            str(t.info_hash).lower()
+            for t in results
+            if getattr(t, "info_hash", None)
+        ]
 
+        logger.info(
+            "Checking cache on %s for %d hashes",
+            ", ".join(account.provider for account in accounts),
+            len(info_hashes),
+        )
+
+        provider_cache_maps = await check_all_caches(
+            accounts,
+            info_hashes,
+        )
+
+        # Completed Torrin account jobs are playable for this user
+        # even when they are not in Torrin's shared cache index.
+        if torrin_account:
+            _mark_torrin_account_results_cached(
+                provider_cache_maps.setdefault("torrin", {}),
+                results,
+            )
+            results = _prioritize_torrin_account_results(results)
+
+        cache_status_map = combine_cache_status(
+            provider_cache_maps,
+            info_hashes,
+        )
+
+        for account in accounts:
+            statuses = provider_cache_maps.get(account.provider, {}).values()
             logger.info(
-                "Checking %s cache status "
-                "for %d hashes",
-                provider_str,
+                "CACHE RESULTS %s: %d cached / %d uncached / %d total",
+                account.provider,
+                sum(1 for status in statuses if status == CacheStatus.CACHED),
+                sum(1 for status in statuses if status == CacheStatus.NOT_CACHED),
                 len(info_hashes),
             )
 
-            if info_hashes:
-                cache_status_map = (
-                    await debrid_client.check_cache(
-                        info_hashes
+        for torrent in results:
+            logger.debug(
+                "CACHE: %-12s | %s",
+                cache_status_label(
+                    cache_status_map.get(
+                        str(getattr(torrent, "info_hash", "")).lower(),
+                        CacheStatus.UNKNOWN,
                     )
-                )
-
-                # Completed Torrin account jobs are playable for this user
-                # even when they are not in Torrin's shared cache index.
-                if provider_str == "torrin":
-                    _mark_torrin_account_results_cached(
-                        cache_status_map,
-                        results,
-                    )
-                    results = _prioritize_torrin_account_results(results)
-
-                cached_count = sum(
-                    1
-                    for status
-                    in cache_status_map.values()
-                    if status
-                    == CacheStatus.CACHED
-                )
-
-                uncached_count = sum(
-                    1
-                    for status
-                    in cache_status_map.values()
-                    if status
-                    == CacheStatus.NOT_CACHED
-                )
-
-                unknown_count = (
-                    len(info_hashes)
-                    - cached_count
-                    - uncached_count
-                )
-
-                logger.info(
-                    "CACHE RESULTS: "
-                    "%d cached / "
-                    "%d uncached / "
-                    "%d unknown / "
-                    "%d total",
-                    cached_count,
-                    uncached_count,
-                    unknown_count,
-                    len(info_hashes),
-                )
-
-                for torrent in results:
-                    info_hash = str(
-                        getattr(
-                            torrent,
-                            "info_hash",
-                            "",
-                        )
-                    ).lower()
-
-                    status = (
-                        cache_status_map.get(
-                            info_hash,
-                            CacheStatus.UNKNOWN,
-                        )
-                    )
-
-                    logger.debug(
-                        "CACHE: %-12s | %s",
-                        cache_status_label(
-                            status
-                        ),
-                        getattr(
-                            torrent,
-                            "title",
-                            "unknown",
-                        ),
-                    )
-
-        except Exception as exc:
-            if debrid_client:
-                cache_status_map = {
-                    str(t.info_hash).lower(): CacheStatus.UNKNOWN
-                    for t in results
-                    if getattr(t, "info_hash", None)
-                }
-
-            logger.exception(
-                "Cache check failed: %s",
-                exc,
+                ),
+                getattr(torrent, "title", "unknown"),
             )
 
     # -----------------------------------------------------
@@ -513,7 +494,7 @@ async def stream(
 
     if (
         cached_only
-        and debrid_client
+        and accounts
     ):
         results = [
             torrent
@@ -628,26 +609,58 @@ async def stream(
         base_url,
     )
 
-    for torrent in results:
-        try:
-            stream_data = build_stream(
-                torrent,
-                cache_status_map=cache_status_map,
-                has_debrid=bool(debrid_client),
-                base_url=base_url,
-                config=config,
-            )
-        except Exception:
-            logger.exception("Failed converting torrent to stream")
-            continue
+    # Name the provider on each stream only when there is a choice.
+    show_provider = len(accounts) > 1
 
-        if stream_data is not None:
-            streams.append(stream_data)
-            logger.debug(
-                "Stream: %-30s | %s",
-                stream_data["name"],
-                getattr(torrent, "title", "unknown"),
+    for torrent in results:
+        info_hash = str(getattr(torrent, "info_hash", "")).lower()
+
+        targets: list[DebridAccount | None] = accounts_for_torrent(
+            info_hash,
+            accounts,
+            provider_cache_maps,
+            stream_mode,
+        ) or [None]
+
+        for account in targets:
+            provider_map = (
+                provider_cache_maps.get(account.provider, {})
+                if account
+                else cache_status_map
             )
+
+            # In "one stream per provider" mode, cached-only also drops the
+            # providers that don't have this torrent cached.
+            if (
+                account
+                and cached_only
+                and provider_map.get(info_hash) != CacheStatus.CACHED
+            ):
+                continue
+
+            try:
+                stream_data = build_stream(
+                    torrent,
+                    cache_status_map=provider_map,
+                    has_debrid=account is not None,
+                    base_url=base_url,
+                    config=config,
+                    provider=account.provider if account else None,
+                    provider_label=(
+                        account.label if account and show_provider else None
+                    ),
+                )
+            except Exception:
+                logger.exception("Failed converting torrent to stream")
+                continue
+
+            if stream_data is not None:
+                streams.append(stream_data)
+                logger.debug(
+                    "Stream: %-30s | %s",
+                    stream_data["name"],
+                    getattr(torrent, "title", "unknown"),
+                )
 
     logger.info(
         "RETURNING STREAMS: %d",
@@ -665,6 +678,21 @@ async def stream(
 
 
 @router.api_route(
+    "/{config}/playback/{provider}/{info_hash}",
+    methods=["GET", "HEAD"],
+)
+async def provider_playback(
+    request: Request,
+    config: str,
+    provider: str,
+    info_hash: str,
+):
+    """Resolve playback through a specific configured provider."""
+
+    return await _playback(request, config, info_hash, provider)
+
+
+@router.api_route(
     "/{config}/playback/{info_hash}",
     methods=["GET", "HEAD"],
 )
@@ -672,6 +700,21 @@ async def playback(
     request: Request,
     config: str,
     info_hash: str,
+):
+    """
+    Playback URL format used before multi-provider support; resolves through
+    the addon's first provider. Kept so streams Stremio already cached keep
+    working.
+    """
+
+    return await _playback(request, config, info_hash)
+
+
+async def _playback(
+    request: Request,
+    config: str,
+    info_hash: str,
+    requested_provider: str | None = None,
 ):
     """
     Resolve a torrent hash through the configured
@@ -687,8 +730,9 @@ async def playback(
     """
 
     logger.info(
-        "Playback request: method=%s hash=%s config=%s",
+        "Playback request: method=%s provider=%s hash=%s config=%s",
         request.method,
+        requested_provider or "default",
         info_hash,
         mask_config_id(config),
     )
@@ -701,29 +745,25 @@ async def playback(
         config
     )
 
-    provider_str, api_key = (
-        _normalize_debrid_config(
-            cfg
-        )
-    )
+    accounts = _configured_accounts(cfg)
 
-    if not provider_str:
+    if not accounts:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "No debrid provider "
-                "configured"
-            ),
+            detail="No debrid provider configured",
         )
 
-    if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "No debrid API key "
-                "configured"
-            ),
-        )
+    if requested_provider is None:
+        provider_str, api_key = accounts[0]
+    else:
+        provider_str = requested_provider.strip().lower()
+        api_key = dict(accounts).get(provider_str)
+
+        if not api_key:
+            raise HTTPException(
+                status_code=404,
+                detail="That debrid provider is not configured for this addon",
+            )
 
     # -----------------------------------------------------
     # NORMALIZE HASH

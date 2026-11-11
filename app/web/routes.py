@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from app.api.debrid_accounts import PROVIDER_LABELS, STREAM_MODE_BEST, STREAM_MODES
 from app.config import get_settings
 from app.config_store import save_config
 from app.ranking.preferences import RankingPreferences
@@ -24,60 +25,72 @@ templates = Jinja2Templates(
 # DEBRID PROVIDER SELECTION
 # =========================================================
 
-# Shown in this order in the provider dropdown.
-DEBRID_PROVIDERS: list[tuple[str, str]] = [
-    ("torrin", "Torrin"),
-    ("torbox", "TorBox"),
-    ("realdebrid", "Real-Debrid"),
-    ("alldebrid", "AllDebrid"),
-    ("premiumize", "Premiumize"),
-    ("offcloud", "Offcloud"),
-]
+# Shown in this order in the provider dropdowns.
+DEBRID_PROVIDERS: list[tuple[str, str]] = list(PROVIDER_LABELS.items())
 
 # Stored as the provider for configs that stream torrents directly.
 P2P_PROVIDER = "p2p"
-
-_PROVIDER_LABELS = dict(DEBRID_PROVIDERS)
 
 # Older form / API clients send one field per provider; the first non-empty
 # one wins, matching the previous behaviour.
 _LEGACY_KEY_FIELDS = [f"{value}_key" for value, _ in DEBRID_PROVIDERS]
 
 
-def _resolve_debrid_choice(form) -> tuple[str, str | None, str | None]:
+def _resolve_debrid_choice(
+    form,
+) -> tuple[list[tuple[str, str]], list[str], str | None]:
     """
-    Return (provider, api_key, error) from the submitted form.
+    Return (accounts, chosen_providers, error) from the submitted form.
 
-    No provider means direct P2P streams. Choosing a provider without a key
-    is an error rather than a silent fallback to P2P.
+    ``accounts`` is the (provider, api_key) list in priority order; empty
+    means direct P2P streams. ``chosen_providers`` (no keys) is used to
+    re-show the form after an error. A provider without a key is an error
+    rather than a silent fallback to P2P.
     """
 
     if "provider" not in form:
         for field in _LEGACY_KEY_FIELDS:
             key = (form.get(field) or "").strip()
             if key:
-                return field.removesuffix("_key"), key, None
+                provider = field.removesuffix("_key")
+                return [(provider, key)], [provider], None
 
-        return P2P_PROVIDER, None, None
+        return [], [], None
 
-    provider = (form.get("provider") or "").strip().lower()
-    api_key = (form.get("api_key") or "").strip()
+    providers = form.getlist("provider")
+    keys = form.getlist("api_key")
 
-    if provider in ("", P2P_PROVIDER):
-        return P2P_PROVIDER, None, None
+    accounts: list[tuple[str, str]] = []
+    chosen: list[str] = []
+    error: str | None = None
 
-    if provider not in _PROVIDER_LABELS:
-        return provider, None, "Unknown debrid provider."
+    for index, raw_provider in enumerate(providers):
+        provider = (raw_provider or "").strip().lower()
+        api_key = (keys[index] if index < len(keys) else "").strip()
 
-    if not api_key:
-        return (
-            provider,
-            None,
-            f"Enter your {_PROVIDER_LABELS[provider]} API key, "
-            "or choose \"None (direct P2P)\".",
-        )
+        if provider in ("", P2P_PROVIDER):
+            continue
 
-    return provider, api_key, None
+        if provider not in PROVIDER_LABELS:
+            error = error or "Unknown debrid provider."
+            continue
+
+        if provider in chosen:
+            error = error or f"{PROVIDER_LABELS[provider]} is listed more than once."
+            continue
+
+        chosen.append(provider)
+
+        if not api_key:
+            error = error or (
+                f"Enter your {PROVIDER_LABELS[provider]} API key, "
+                "or remove that provider."
+            )
+            continue
+
+        accounts.append((provider, api_key))
+
+    return accounts, chosen, error
 
 
 def _render_settings(
@@ -86,7 +99,8 @@ def _render_settings(
     *,
     manifest: str | None = None,
     error: str | None = None,
-    provider: str = "",
+    chosen_providers: list[str] | None = None,
+    stream_mode: str = STREAM_MODE_BEST,
     status_code: int = 200,
 ) -> Response:
     response = templates.TemplateResponse(
@@ -101,7 +115,10 @@ def _render_settings(
             ),
             "error": error,
             "providers": DEBRID_PROVIDERS,
-            "selected_provider": provider,
+            "provider_labels": PROVIDER_LABELS,
+            # At least one row; an empty first row means P2P.
+            "provider_rows": chosen_providers or [""],
+            "stream_mode": stream_mode,
         },
         status_code=status_code,
     )
@@ -365,7 +382,11 @@ async def generate_manifest(
         form
     )
 
-    provider, api_key, error = _resolve_debrid_choice(form)
+    accounts, chosen_providers, error = _resolve_debrid_choice(form)
+
+    stream_mode = form.get("stream_mode", STREAM_MODE_BEST)
+    if stream_mode not in STREAM_MODES:
+        stream_mode = STREAM_MODE_BEST
 
     config = {
 
@@ -373,11 +394,22 @@ async def generate_manifest(
         # DEBRID PROVIDER
         # -------------------------------------------------
 
+        # All debrid accounts, in priority order (empty: direct P2P).
+        "providers": [
+            {"provider": provider, "api_key": key}
+            for provider, key in accounts
+        ],
+
+        "stream_mode":
+            stream_mode,
+
+        # The first account again, in the single-provider fields older
+        # Cauldron versions read, so a rollback keeps working.
         "provider":
-            provider,
+            accounts[0][0] if accounts else P2P_PROVIDER,
 
         "api_key":
-            api_key,
+            accounts[0][1] if accounts else None,
 
         # -------------------------------------------------
         # BASIC
@@ -538,9 +570,10 @@ async def generate_manifest(
         # Re-show the form with the user's selections, minus any key.
         return _render_settings(
             request,
-            {**config, "api_key": None},
+            {**config, "api_key": None, "providers": []},
             error=error,
-            provider=provider,
+            chosen_providers=chosen_providers,
+            stream_mode=stream_mode,
             status_code=400,
         )
 
@@ -571,5 +604,6 @@ async def generate_manifest(
         request,
         config,
         manifest=manifest_url,
-        provider=provider,
+        chosen_providers=[provider for provider, _ in accounts],
+        stream_mode=stream_mode,
     )

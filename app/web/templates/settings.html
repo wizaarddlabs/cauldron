@@ -23,18 +23,22 @@
 {% if manifest %}
 <section class="card result-card" id="result" aria-labelledby="resultTitle">
   <h2 id="resultTitle">⚡ Your addon is ready</h2>
+  {% set has_debrid = provider_rows and provider_rows[0] %}
   <p class="small">
-    {% if selected_provider and selected_provider != 'p2p' %}
-      Streams resolve through your {{ dict(providers)[selected_provider] }} account.
-    {% else %}
+    {% if not has_debrid %}
       No debrid service: streams play directly over P2P.
+    {% elif provider_rows | length == 1 %}
+      Streams resolve through your {{ provider_labels[provider_rows[0]] }} account.
+    {% else %}
+      Streams resolve through
+      {% for p in provider_rows %}{{ provider_labels[p] }}{% if not loop.last %}{% if loop.revindex == 2 %} and {% else %}, {% endif %}{% endif %}{% endfor %}{% if stream_mode == 'all' %}, with a stream for each{% else %}, in that order of priority{% endif %}.
     {% endif %}
   </p>
   <a class="button primary" href="{{ stremio_install_url }}">▶ Install in Stremio</a>
   <div class="manifest-box" id="manifestUrl">{{ manifest }}</div>
   <button type="button" class="secondary" onclick="copyManifest()">📋 Copy addon URL</button>
-  {% if selected_provider and selected_provider != 'p2p' %}
-  <p class="muted small">Keep this URL private: anyone who has it can use your debrid account.</p>
+  {% if has_debrid %}
+  <p class="muted small">Keep this URL private: anyone who has it can use your debrid {% if provider_rows | length > 1 %}accounts{% else %}account{% endif %}.</p>
   {% endif %}
 </section>
 {% endif %}
@@ -48,20 +52,61 @@
   <section class="card">
     <h2>Debrid service</h2>
 
-    <label for="provider">Provider</label>
-    <select id="provider" name="provider" data-provider-select>
-      <option value="p2p" {% if not selected_provider or selected_provider == 'p2p' %}selected{% endif %}>None (direct P2P streams)</option>
-      {% for value, label in providers %}
-      <option value="{{ value }}" {% if selected_provider == value %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
+    <p class="muted small field-help provider-intro">Add one or more debrid services, highest priority first, or leave it on P2P.</p>
 
-    <div class="api-key-field" data-api-key-field>
-      <label for="api_key">API key</label>
-      <input id="api_key" type="password" name="api_key" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your API key">
+    <div class="provider-list" data-provider-list>
+      {% for chosen in provider_rows %}
+      {% set n = loop.index %}
+      <div class="provider-row" data-provider-row>
+        <div class="provider-row-head">
+          <label for="provider_{{ n }}" data-provider-title>{% if loop.first %}Provider{% else %}Provider {{ n }}{% endif %}</label>
+          <button type="button" class="remove-provider" data-remove-provider aria-label="Remove this provider" {% if loop.first %}hidden{% endif %}>Remove</button>
+        </div>
+        <select id="provider_{{ n }}" name="provider" data-provider-select>
+          {% if loop.first %}
+          <option value="p2p" {% if not chosen %}selected{% endif %}>None (direct P2P streams)</option>
+          {% endif %}
+          {% for value, label in providers %}
+          <option value="{{ value }}" {% if chosen == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <div class="api-key-field" data-api-key-field>
+          <label for="api_key_{{ n }}">API key</label>
+          <input id="api_key_{{ n }}" type="password" name="api_key" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your API key">
+        </div>
+      </div>
+      {% endfor %}
     </div>
 
+    <template id="providerRowTemplate">
+      <div class="provider-row" data-provider-row>
+        <div class="provider-row-head">
+          <label data-provider-title>Provider</label>
+          <button type="button" class="remove-provider" data-remove-provider aria-label="Remove this provider">Remove</button>
+        </div>
+        <select name="provider" data-provider-select>
+          {% for value, label in providers %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <div class="api-key-field" data-api-key-field>
+          <label>API key</label>
+          <input type="password" name="api_key" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your API key">
+        </div>
+      </div>
+    </template>
+
+    <button type="button" class="secondary add-provider" data-add-provider>＋ Add another provider</button>
+
     <p class="muted small field-help" data-p2p-help>Without a debrid service, Stremio streams torrents directly from peers.</p>
+
+    <div class="stream-mode" data-stream-mode>
+      <label for="stream_mode">When more than one provider has a torrent</label>
+      <select id="stream_mode" name="stream_mode">
+        <option value="best" {% if stream_mode != 'all' %}selected{% endif %}>Use the first provider that has it cached</option>
+        <option value="all" {% if stream_mode == 'all' %}selected{% endif %}>Show a stream for each provider</option>
+      </select>
+    </div>
 
     <label class="toggle" for="dedupe_streams">
       <input type="checkbox" id="dedupe_streams" name="dedupe_streams" {% if prefs.dedupe_streams %}checked{% endif %}>
