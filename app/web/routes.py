@@ -1,3 +1,5 @@
+import hashlib
+from functools import cache
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -19,6 +21,31 @@ router = APIRouter(tags=["web"])
 templates = Jinja2Templates(
     directory=Path(__file__).parent / "templates"
 )
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@cache
+def _asset_hash(name: str) -> str:
+    """Short content hash of a static file, computed once per process."""
+    try:
+        return hashlib.sha256((STATIC_DIR / name).read_bytes()).hexdigest()[:10]
+    except OSError:
+        return "missing"
+
+
+def asset_url(name: str) -> str:
+    """
+    URL of a static asset that changes whenever the file's content does.
+
+    A hand-maintained ?v= number was forgotten in v0.7.0, so browsers kept
+    running the cached v0.6.0 settings.js and the new "Add another provider"
+    button did nothing.
+    """
+    return f"/static/{name}?v={_asset_hash(name)}"
+
+
+templates.env.globals["asset_url"] = asset_url
 
 
 # =========================================================

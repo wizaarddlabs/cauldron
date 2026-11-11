@@ -7,15 +7,15 @@
 <meta name="theme-color" content="#0d0d12">
 <meta name="referrer" content="no-referrer">
 <title>Cauldron</title>
-<link rel="icon" href="/static/cauldron.png">
-<link rel="stylesheet" href="/static/style.css?v=8">
+<link rel="icon" href="{{ asset_url('cauldron.png') }}">
+<link rel="stylesheet" href="{{ asset_url('style.css') }}">
 </head>
 
 <body>
 
 <main class="cauldron">
 
-<img class="logo" src="/static/cauldron.png" alt="">
+<img class="logo" src="{{ asset_url('cauldron.png') }}" alt="">
 
 <h1>🧙 Cauldron</h1>
 <p class="subtitle">Create your Stremio addon with filtered torrent and debrid streams</p>
@@ -301,7 +301,7 @@
   if (window.history && history.replaceState) history.replaceState(null, '', '/');
 </script>
 {% endif %}
-<script src="/static/settings.js?v=6"></script>
+<script src="{{ asset_url('settings.js') }}"></script>
 
 </body>
 
