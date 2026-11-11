@@ -1,126 +1,99 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cauldron Wizard</title>
-
-<link rel="stylesheet" href="/static/style.css?v=7">
-
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0d12">
+<meta name="referrer" content="no-referrer">
+<title>Cauldron</title>
+<link rel="icon" href="/static/cauldron.png">
+<link rel="stylesheet" href="/static/style.css?v=8">
 </head>
 
 <body>
 
-<div class="cauldron">
+<main class="cauldron">
 
-<img class="logo" src="/static/cauldron.png">
+<img class="logo" src="/static/cauldron.png" alt="">
 
 <h1>🧙 Cauldron</h1>
-<p class="subtitle">Create your Stremio manifest with filtered debrid streams</p>
-
+<p class="subtitle">Create your Stremio addon with filtered torrent and debrid streams</p>
 
 {% if manifest %}
-
-<div class="card">
-  <h3 style="margin-top:12px">⚡ Your Cauldron Manifest</h3>
-  <p class="small">Copy this URL into Stremio:</p>
+<section class="card result-card" id="result" aria-labelledby="resultTitle">
+  <h2 id="resultTitle">⚡ Your addon is ready</h2>
+  <p class="small">
+    {% if selected_provider and selected_provider != 'p2p' %}
+      Streams resolve through your {{ dict(providers)[selected_provider] }} account.
+    {% else %}
+      No debrid service: streams play directly over P2P.
+    {% endif %}
+  </p>
+  <a class="button primary" href="{{ stremio_install_url }}">▶ Install in Stremio</a>
   <div class="manifest-box" id="manifestUrl">{{ manifest }}</div>
-  <button type="button" class="primary" onclick="copyManifest()">📋 Copy Manifest URL</button>
-</div>
-
+  <button type="button" class="secondary" onclick="copyManifest()">📋 Copy addon URL</button>
+  {% if selected_provider and selected_provider != 'p2p' %}
+  <p class="muted small">Keep this URL private: anyone who has it can use your debrid account.</p>
+  {% endif %}
+</section>
 {% endif %}
 
-<div class="card">
-  <p class="small muted">Version: v{{ settings.addon_version }}</p>
-</div>
+<form method="post" action="/generate" novalidate>
 
-<form method="post" action="/generate">
+  {% if error %}
+  <div class="form-error" role="alert">{{ error }}</div>
+  {% endif %}
 
-  <div class="card">
-    <h2>Debrid</h2>
-    <div class="stacked-row">
-      <div>
-        <label>Torrin API Key</label>
-        <input type="password" name="torrin_key" value="{{ prefs.torrin_key or '' }}">
-      </div>
-      <div>
-        <label>TorBox API Key</label>
-        <input type="password" name="torbox_key" value="{{ prefs.torbox_key or '' }}">
-      </div>
-      <div>
-        <label>Real-Debrid API Key</label>
-        <input type="password" name="realdebrid_key" value="{{ prefs.realdebrid_key or '' }}">
-      </div>
+  <section class="card">
+    <h2>Debrid service</h2>
+
+    <label for="provider">Provider</label>
+    <select id="provider" name="provider" data-provider-select>
+      <option value="p2p" {% if not selected_provider or selected_provider == 'p2p' %}selected{% endif %}>None (direct P2P streams)</option>
+      {% for value, label in providers %}
+      <option value="{{ value }}" {% if selected_provider == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <div class="api-key-field" data-api-key-field>
+      <label for="api_key">API key</label>
+      <input id="api_key" type="password" name="api_key" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your API key">
     </div>
-    <div class="stacked-row" style="margin-top:10px">
-      <div>
-        <label>AllDebrid API Key</label>
-        <input type="password" name="alldebrid_key" value="{{ prefs.alldebrid_key or '' }}">
-      </div>
-      <div>
-        <label>Premiumize API Key</label>
-        <input type="password" name="premiumize_key" value="{{ prefs.premiumize_key or '' }}">
-      </div>
-      <div>
-        <label>Offcloud API Key</label>
-        <input type="password" name="offcloud_key" value="{{ prefs.offcloud_key or '' }}">
-      </div>
-    </div>
-  </div>
 
-  <div class="card">
-    <h2>Debrid Services</h2>
-    <div class="muted small">Manage how debrid services are used</div>
-    <div class="checkbox-row" style="margin-top:10px">
-      <label><input type="checkbox" name="dedupe_streams" {% if prefs.dedupe_streams %}checked{% endif %}> Deduplicate Streams</label>
-    </div>
-    <p class="muted small" style="margin-top:8px">Deduplicate keeps the first occurrence of a torrent across providers.</p>
-  </div>
+    <p class="muted small field-help" data-p2p-help>Without a debrid service, Stremio streams torrents directly from peers.</p>
 
-  <div class="card">
+    <label class="toggle" for="dedupe_streams">
+      <input type="checkbox" id="dedupe_streams" name="dedupe_streams" {% if prefs.dedupe_streams %}checked{% endif %}>
+      <span>Hide duplicate streams</span>
+    </label>
+  </section>
+
+  {% set default_resolutions = ['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'] %}
+  <section class="card">
     <h2>Resolution</h2>
     <div class="pills">
-      <div class="pill"><input id="2160" type="checkbox" name="resolution" value="2160p" {% if '2160p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="2160">2160p</label></div>
-      <div class="pill"><input id="1440" type="checkbox" name="resolution" value="1440p" {% if '1440p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="1440">1440p</label></div>
-      <div class="pill"><input id="1080" type="checkbox" name="resolution" value="1080p" {% if '1080p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="1080">1080p</label></div>
-      <div class="pill"><input id="720" type="checkbox" name="resolution" value="720p" {% if '720p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="720">720p</label></div>
-      <div class="pill"><input id="576" type="checkbox" name="resolution" value="576p" {% if '576p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="576">576p</label></div>
-      <div class="pill"><input id="480" type="checkbox" name="resolution" value="480p" {% if '480p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="480">480p</label></div>
-      <div class="pill"><input id="360" type="checkbox" name="resolution" value="360p" {% if '360p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="360">360p</label></div>
-      <div class="pill"><input id="240" type="checkbox" name="resolution" value="240p" {% if '240p' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="240">240p</label></div>
-      <div class="pill"><input id="unknown" type="checkbox" name="resolution" value="unknown" {% if 'unknown' in (prefs.resolution | default(['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p', '240p', 'unknown'])) %}checked{% endif %}><label for="unknown">Unknown</label></div>
+      {% for value, label in [('2160p','2160p'),('1440p','1440p'),('1080p','1080p'),('720p','720p'),('576p','576p'),('480p','480p'),('360p','360p'),('240p','240p'),('unknown','Unknown')] %}
+      <label class="pill"><input type="checkbox" name="resolution" value="{{ value }}" {% if value in (prefs.resolution | default(default_resolutions, true)) %}checked{% endif %}><span>{{ label }}</span></label>
+      {% endfor %}
     </div>
 
-    <div style="margin-top:12px">
-      <div class="stacked-row">
-        <div>
-          <label>Max Results Per Resolution</label>
-          <input type="number" name="max_per_resolution" min="0" value="{{ prefs.max_per_resolution or 0 }}">
-        </div>
-        <div>
-          <label>Max Size (GB)</label>
-          <input type="number" name="max_size_gb" min="0" value="{{ prefs.max_size_gb or 0 }}">
-        </div>
+    <div class="field-grid">
+      <div>
+        <label for="max_per_resolution">Max results per resolution</label>
+        <input id="max_per_resolution" type="number" inputmode="numeric" name="max_per_resolution" min="0" value="{{ prefs.max_per_resolution or 0 }}">
+      </div>
+      <div>
+        <label for="max_size_gb">Max size (GB)</label>
+        <input id="max_size_gb" type="number" inputmode="decimal" name="max_size_gb" min="0" value="{{ prefs.max_size_gb or 0 }}">
       </div>
     </div>
-  </div>
+    <p class="muted small field-help">0 means no limit.</p>
+  </section>
 
-  <div class="card">
-    <h2>Quality</h2>
-    <div class="pills">
-      <div class="pill"><input id="prefer_4k" type="checkbox" name="prefer_4k" value="1" {% if prefs.prefer_4k | default(true) %}checked{% endif %}><label for="prefer_4k">Prefer 4K</label></div>
-      <div class="pill"><input id="prefer_hdr" type="checkbox" name="prefer_hdr" value="1" {% if prefs.prefer_hdr | default(true) %}checked{% endif %}><label for="prefer_hdr">HDR</label></div>
-      <div class="pill"><input id="prefer_dv" type="checkbox" name="prefer_dolby_vision" value="1" {% if prefs.prefer_dolby_vision | default(true) %}checked{% endif %}><label for="prefer_dv">Dolby Vision</label></div>
-      <div class="pill"><input id="prefer_remux" type="checkbox" name="prefer_remux" value="1" {% if prefs.prefer_remux | default(true) %}checked{% endif %}><label for="prefer_remux">Remux</label></div>
-      <div class="pill"><input id="prefer_hevc" type="checkbox" name="prefer_hevc" value="1" {% if prefs.prefer_hevc | default(true) %}checked{% endif %}><label for="prefer_hevc">HEVC</label></div>
-      <div class="pill"><input id="prefer_atmos" type="checkbox" name="prefer_atmos" value="1" {% if prefs.prefer_atmos | default(true) %}checked{% endif %}><label for="prefer_atmos">Atmos</label></div>
-    </div>
-  </div>
-
-  <div class="card">
+  <section class="card">
     <h2>Languages</h2>
-    <div class="muted small">Select the languages you require, prefer, or want excluded.</div>
+    <p class="muted small">Select the languages you require, prefer, or want excluded.</p>
 
     {% set language_options = [
       {'value':'arabic','label':'Arabic'},
@@ -171,156 +144,119 @@
       {'value':'ukrainian','label':'Ukrainian'},
       {'value':'vietnamese','label':'Vietnamese'},
       {'value':'chinese','label':'Chinese'},
-    ] %}
+    ] | sort(attribute='label') %}
 
+    {% for group, title in [('required_languages', 'Required'), ('preferred_languages', 'Preferred'), ('excluded_languages', 'Excluded')] %}
+    {% set chosen = prefs[group] or [] %}
     <div class="language-dropdown">
-      <label>Required Languages</label>
-      <details class="dropdown" data-dropdown="required">
-        <summary class="dropdown-toggle">Select required languages</summary>
-        <div class="dropdown-menu">
+      <span class="field-label" id="{{ group }}_label">{{ title }} languages</span>
+      <details class="dropdown" data-dropdown="{{ group }}">
+        <summary class="dropdown-toggle" aria-labelledby="{{ group }}_label">Select {{ title | lower }} languages</summary>
+        <div class="dropdown-menu" role="group" aria-labelledby="{{ group }}_label">
           {% for option in language_options %}
-            <label class="dropdown-option"><input type="checkbox" name="required_languages" value="{{ option.value }}" {% if option.value in prefs.required_languages %}checked{% endif %}>{{ option.label }}</label>
+          <label class="dropdown-option"><input type="checkbox" name="{{ group }}" value="{{ option.value }}" {% if option.value in chosen %}checked{% endif %}><span>{{ option.label }}</span></label>
           {% endfor %}
         </div>
       </details>
     </div>
+    {% endfor %}
+  </section>
 
-    <div class="language-dropdown" style="margin-top:18px">
-      <label>Preferred Languages</label>
-      <details class="dropdown" data-dropdown="preferred">
-        <summary class="dropdown-toggle">Select preferred languages</summary>
-        <div class="dropdown-menu">
-          {% for option in language_options %}
-            <label class="dropdown-option"><input type="checkbox" name="preferred_languages" value="{{ option.value }}" {% if option.value in prefs.preferred_languages %}checked{% endif %}>{{ option.label }}</label>
-          {% endfor %}
-        </div>
-      </details>
-    </div>
-
-    <div class="language-dropdown" style="margin-top:18px">
-      <label>Excluded Languages</label>
-      <details class="dropdown" data-dropdown="excluded">
-        <summary class="dropdown-toggle">Select excluded languages</summary>
-        <div class="dropdown-menu">
-          {% for option in language_options %}
-            <label class="dropdown-option"><input type="checkbox" name="excluded_languages" value="{{ option.value }}" {% if option.value in prefs.excluded_languages %}checked{% endif %}>{{ option.label }}</label>
-          {% endfor %}
-        </div>
-      </details>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Codec</h2>
-    <div class="pills">
-      <div class="pill"><input id="codec_hevc" type="checkbox" name="codec" value="hevc" {% if 'hevc' in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'])) %}checked{% endif %}><label for="codec_hevc">HEVC / x265</label></div>
-      <div class="pill"><input id="codec_x264" type="checkbox" name="codec" value="h264" {% if 'h264' in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'])) %}checked{% endif %}><label for="codec_x264">H.264 / x264</label></div>
-      <div class="pill"><input id="codec_av1" type="checkbox" name="codec" value="av1" {% if 'av1' in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'])) %}checked{% endif %}><label for="codec_av1">AV1</label></div>
-      <div class="pill"><input id="codec_remux" type="checkbox" name="codec" value="remux" {% if 'remux' in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'])) %}checked{% endif %}><label for="codec_remux">Remux</label></div>
-    </div>
-  </div>
-
-  <div class="card">
+  <section class="card">
     <h2>Options</h2>
     <div class="pills">
-      <div class="pill"><input id="cached" type="checkbox" name="cached_only" {% if prefs.cached_only %}checked{% endif %}><label for="cached">Cached Only</label></div>
-      <div class="pill"><input id="allow_cam" type="checkbox" name="allow_cam" value="1" {% if prefs.allow_cam %}checked{% endif %}><label for="allow_cam">Allow CAM/Low Quality</label></div>
-      <div class="pill"><input id="allow_season_packs" type="checkbox" name="allow_season_packs" value="1" {% if prefs.allow_season_packs %}checked{% endif %}><label for="allow_season_packs">Allow Season Packs</label></div>
+      <label class="pill"><input type="checkbox" name="cached_only" {% if prefs.cached_only %}checked{% endif %}><span>Cached only</span></label>
+      <label class="pill"><input type="checkbox" name="allow_season_packs" value="1" {% if prefs.allow_season_packs %}checked{% endif %}><span>Allow season packs</span></label>
+      <label class="pill"><input type="checkbox" name="allow_cam" value="1" {% if prefs.allow_cam %}checked{% endif %}><span>Allow CAM / low quality</span></label>
     </div>
-  </div>
+  </section>
 
-  <div class="card sorting-card">
-    <h2 class="sorting-title">Sorting</h2>
+  <details class="card collapsible">
+    <summary><h2>Quality preferences</h2><span class="summary-hint">Ranking boosts</span></summary>
+    <div class="pills">
+      {% for name, label in [('prefer_4k','Prefer 4K'),('prefer_hdr','HDR'),('prefer_dolby_vision','Dolby Vision'),('prefer_remux','Remux'),('prefer_hevc','HEVC'),('prefer_atmos','Atmos')] %}
+      <label class="pill"><input type="checkbox" name="{{ name }}" value="1" {% if prefs[name] | default(true) %}checked{% endif %}><span>{{ label }}</span></label>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="card collapsible">
+    <summary><h2>Codec</h2><span class="summary-hint">Which encodes to include</span></summary>
+    <div class="pills">
+      {% for value, label in [('hevc','HEVC / x265'),('h264','H.264 / x264'),('av1','AV1'),('remux','Remux')] %}
+      <label class="pill"><input type="checkbox" name="codec" value="{{ value }}" {% if value in (prefs.codec | default(['hevc', 'h264', 'av1', 'remux'], true)) %}checked{% endif %}><span>{{ label }}</span></label>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="card collapsible sorting-card">
+    <summary><h2 class="sorting-title">Sorting</h2><span class="summary-hint">Ranking order</span></summary>
     <p class="muted small sort-help">Move criteria to choose how results are ranked. Priority 1 is checked first; lower priorities break ties.</p>
     <div class="sortable-list" id="sortCriteria" role="list" aria-label="Sort priorities">
-      <div class="sortable-item" data-value="seeders" role="listitem">
+      {% for value, label in [('seeders','Seeders'),('size','Size'),('resolution','Resolution'),('quality','Quality Score'),('cached','Cache Status')] %}
+      <div class="sortable-item" data-value="{{ value }}" role="listitem">
         <span class="sort-controls">
-          <button type="button" class="sort-btn up" aria-label="Move Seeders up" title="Move up" onclick="moveItem(this, -1)">↑</button>
-          <button type="button" class="sort-btn down" aria-label="Move Seeders down" title="Move down" onclick="moveItem(this, 1)">↓</button>
+          <button type="button" class="sort-btn up" aria-label="Move {{ label }} up" title="Move up" onclick="moveItem(this, -1)">↑</button>
+          <button type="button" class="sort-btn down" aria-label="Move {{ label }} down" title="Move down" onclick="moveItem(this, 1)">↓</button>
         </span>
-        <span class="sort-rank" aria-hidden="true">1</span>
-        <span class="sort-label">Seeders</span>
+        <span class="sort-rank" aria-hidden="true">{{ loop.index }}</span>
+        <span class="sort-label">{{ label }}</span>
       </div>
-      <div class="sortable-item" data-value="size" role="listitem">
-        <span class="sort-controls">
-          <button type="button" class="sort-btn up" aria-label="Move Size up" title="Move up" onclick="moveItem(this, -1)">↑</button>
-          <button type="button" class="sort-btn down" aria-label="Move Size down" title="Move down" onclick="moveItem(this, 1)">↓</button>
-        </span>
-        <span class="sort-rank" aria-hidden="true">2</span>
-        <span class="sort-label">Size</span>
-      </div>
-      <div class="sortable-item" data-value="resolution" role="listitem">
-        <span class="sort-controls">
-          <button type="button" class="sort-btn up" aria-label="Move Resolution up" title="Move up" onclick="moveItem(this, -1)">↑</button>
-          <button type="button" class="sort-btn down" aria-label="Move Resolution down" title="Move down" onclick="moveItem(this, 1)">↓</button>
-        </span>
-        <span class="sort-rank" aria-hidden="true">3</span>
-        <span class="sort-label">Resolution</span>
-      </div>
-      <div class="sortable-item" data-value="quality" role="listitem">
-        <span class="sort-controls">
-          <button type="button" class="sort-btn up" aria-label="Move Quality Score up" title="Move up" onclick="moveItem(this, -1)">↑</button>
-          <button type="button" class="sort-btn down" aria-label="Move Quality Score down" title="Move down" onclick="moveItem(this, 1)">↓</button>
-        </span>
-        <span class="sort-rank" aria-hidden="true">4</span>
-        <span class="sort-label">Quality Score</span>
-      </div>
-      <div class="sortable-item" data-value="cached" role="listitem">
-        <span class="sort-controls">
-          <button type="button" class="sort-btn up" aria-label="Move Cache Status up" title="Move up" onclick="moveItem(this, -1)">↑</button>
-          <button type="button" class="sort-btn down" aria-label="Move Cache Status down" title="Move down" onclick="moveItem(this, 1)">↓</button>
-        </span>
-        <span class="sort-rank" aria-hidden="true">5</span>
-        <span class="sort-label">Cache Status</span>
-      </div>
+      {% endfor %}
     </div>
     <p class="sr-only" id="sortAnnouncement" aria-live="polite"></p>
     <input type="hidden" name="sort_criteria" id="sortCriteriaInput" value="{% if prefs.sort_criteria and prefs.sort_criteria[0] %}{{ prefs.sort_criteria | join(',') }}{% else %}seeders,resolution,quality{% endif %}">
-    
+
     <div class="sort-direction">
       <label for="sortOrder">Sort direction</label>
       <select name="sort_order" id="sortOrder">
-        <option value="desc" {% if prefs.sort_order == 'desc' %}selected{% endif %}>Descending</option>
+        <option value="desc" {% if prefs.sort_order != 'asc' %}selected{% endif %}>Descending</option>
         <option value="asc" {% if prefs.sort_order == 'asc' %}selected{% endif %}>Ascending</option>
       </select>
     </div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Advanced Filters</h2>
-    <div class="stacked-row">
+  <details class="card collapsible">
+    <summary><h2>Advanced filters</h2><span class="summary-hint">Seeders and patterns</span></summary>
+    <div class="field-grid">
       <div>
-        <label>Minimum Seeders</label>
-        <input type="number" name="min_seeders" min="0" value="{{ prefs.min_seeders }}">
+        <label for="min_seeders">Minimum seeders</label>
+        <input id="min_seeders" type="number" inputmode="numeric" name="min_seeders" min="0" value="{{ prefs.min_seeders or 0 }}">
       </div>
-
       <div>
-        <label>Seeder weight (multiplier)</label>
-        <input type="number" name="seeder_weight" min="0" step="0.1" value="{{ prefs.seeder_weight }}">
-      </div>
-
-      <div>
-        <label>Custom patterns (one per line)</label>
-        <textarea name="custom_patterns" rows="3">{{ prefs.custom_patterns or '' }}</textarea>
+        <label for="seeder_weight">Seeder weight (multiplier)</label>
+        <input id="seeder_weight" type="number" inputmode="decimal" name="seeder_weight" min="0" step="0.1" value="{{ prefs.seeder_weight if prefs.seeder_weight is not none else 1 }}">
       </div>
     </div>
-  </div>
+    <label for="custom_patterns">Custom patterns (one per line)</label>
+    <textarea id="custom_patterns" name="custom_patterns" rows="3" autocapitalize="off" spellcheck="false">{{ prefs.custom_patterns or '' }}</textarea>
+  </details>
 
-  <button class="primary">🧙 Create Cauldron Manifest</button>
-
-  <div style="margin-top:18px; text-align:center; font-size:13px; color:#9aa0a6;">
-    <div>Support the project:</div>
-    <a href="https://github.com/wizaarddlabs/cauldron" target="_blank" rel="noopener noreferrer" style="color:#a78bfa; text-decoration:none;">GitHub</a>
-    &nbsp;|&nbsp;
-    <a href="https://ko-fi.com/wizaardd" target="_blank" rel="noopener noreferrer" style="color:#a78bfa; text-decoration:none;">Ko-fi</a>
+  <div class="submit-bar">
+    <button type="submit" class="primary">🧙 {% if manifest %}Create another addon{% else %}Create addon{% endif %}</button>
   </div>
 
 </form>
 
+<footer class="footer">
+  <div>Support the project:
+    <a href="https://github.com/wizaarddlabs/cauldron" target="_blank" rel="noopener noreferrer">GitHub</a>
+    ·
+    <a href="https://ko-fi.com/wizaardd" target="_blank" rel="noopener noreferrer">Ko-fi</a>
+  </div>
+  <div class="version">v{{ settings.addon_version }}</div>
+</footer>
 
-<script src="/static/settings.js?v=5"></script>
+</main>
 
-</div>
+{% if manifest %}
+<script>
+  // Shown in response to the form POST: reset the address bar to "/" so a
+  // refresh doesn't resubmit the form and create a duplicate addon.
+  if (window.history && history.replaceState) history.replaceState(null, '', '/');
+</script>
+{% endif %}
+<script src="/static/settings.js?v=6"></script>
 
 </body>
 
