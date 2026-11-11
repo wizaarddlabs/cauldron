@@ -1,4 +1,4 @@
-# Unreleased
+# Cauldron v0.5.0
 
 ## Security
 
