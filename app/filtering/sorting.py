@@ -19,8 +19,6 @@ The order of sort_criteria determines priority.
 """
 
 import logging
-from typing import List
-
 
 from app.models import TorrentResult
 
@@ -350,12 +348,12 @@ def _sort_value(
 # ---------------------------------------------------------
 
 def sort_torrents(
-    torrents: List[TorrentResult],
-    sort_criteria: List[str] | None = None,
+    torrents: list[TorrentResult],
+    sort_criteria: list[str] | None = None,
     sort_order: str = "desc",
     allow_season_packs: bool = False,
     cache_status_map: dict | None = None,
-) -> List[TorrentResult]:
+) -> list[TorrentResult]:
 
     if not torrents:
         return []

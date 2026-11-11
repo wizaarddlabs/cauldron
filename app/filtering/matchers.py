@@ -1,6 +1,5 @@
 import re
 
-
 LANGUAGE_PATTERNS = {
 
     "spanish": [
@@ -290,15 +289,7 @@ CODEC_PATTERNS = {
 
 def _match_patterns(title_lower, patterns):
 
-    for pat in patterns:
-
-        if re.search(
-            pat,
-            title_lower
-        ):
-            return True
-
-    return False
+    return any(re.search(pat, title_lower) for pat in patterns)
 
 
 
@@ -327,15 +318,7 @@ def matches_language(
         for x in allowed
     ]:
 
-        for pattern in FOREIGN_LANGUAGE_PATTERNS:
-
-            if re.search(
-                pattern,
-                title_lower
-            ):
-                return False
-
-        return True
+        return not _match_patterns(title_lower, FOREIGN_LANGUAGE_PATTERNS)
 
 
 

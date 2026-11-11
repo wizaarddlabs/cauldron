@@ -2,7 +2,6 @@
 Core data models shared across scrapers, debrid clients, and API layers.
 """
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,14 +12,14 @@ class TorrentResult(BaseModel):
     title: str
     info_hash: str = Field(..., description="40-char hex BitTorrent info hash")
     magnet: str
-    size_bytes: Optional[int] = None
-    seeders: Optional[int] = None
-    leechers: Optional[int] = None
+    size_bytes: int | None = None
+    seeders: int | None = None
+    leechers: int | None = None
     source: str = Field(..., description="Name of the scraper/indexer that found this")
-    indexer: Optional[str] = None
-    quality: Optional[str] = Field(default=None, description="e.g. 2160p, 1080p, 720p, CAM")
-    codec: Optional[str] = None
-    published_at: Optional[str] = None
+    indexer: str | None = None
+    quality: str | None = Field(default=None, description="e.g. 2160p, 1080p, 720p, CAM")
+    codec: str | None = None
+    published_at: str | None = None
 
 
 class DebridProvider(str, Enum):
@@ -44,30 +43,30 @@ class StreamCandidate(BaseModel):
     torrent: TorrentResult
     provider: DebridProvider
     cache_status: CacheStatus = CacheStatus.UNKNOWN
-    playback_url: Optional[str] = None
-    file_name: Optional[str] = None
+    playback_url: str | None = None
+    file_name: str | None = None
 
 
 class AvailabilityRequest(BaseModel):
     q: str
     provider: DebridProvider
     api_key: str
-    imdb_id: Optional[str] = None
-    season: Optional[str] = None
-    episode: Optional[str] = None
-    media_type: Optional[str] = None
+    imdb_id: str | None = None
+    season: str | None = None
+    episode: str | None = None
+    media_type: str | None = None
 
 
 class ResolveRequest(BaseModel):
     provider: DebridProvider
     api_key: str
     magnet: str
-    file_index: Optional[int] = Field(
+    file_index: int | None = Field(
         default=None, description="Which file to pick if the torrent has multiple files"
     )
 
 
 class ResolveResponse(BaseModel):
     playback_url: str
-    file_name: Optional[str] = None
+    file_name: str | None = None
     provider: DebridProvider

@@ -1,18 +1,16 @@
 import asyncio
 import logging
 import time
-from typing import Optional
 
-from app.http_client import http_session
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.config import get_settings
 from app.config_store import load_config
 from app.debrid.factory import get_debrid_client
+from app.http_client import http_session
 from app.models import CacheStatus, DebridProvider
 from app.scrapers.aggregator import search_all
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -116,7 +114,7 @@ async def _get_playback_lock(key: str) -> asyncio.Lock:
         return lock
 
 
-def _get_cached_playback_url(key: str) -> Optional[str]:
+def _get_cached_playback_url(key: str) -> str | None:
     """
     Return a cached playback URL if it is still valid.
     """
@@ -170,7 +168,7 @@ def _mask_config_id(config: str) -> str:
     return f"{config[:6]}..."
 
 
-def _redact(value: object, *secrets: Optional[str]) -> str:
+def _redact(value: object, *secrets: str | None) -> str:
     """
     Render ``value`` as text with any of ``secrets`` masked out.
 
@@ -235,7 +233,7 @@ async def resolve_media(type_: str, id_: str):
         raise HTTPException(
             status_code=502,
             detail=f"Unable to resolve metadata: {exc}",
-        )
+        ) from exc
 
     meta = data.get("meta") or {}
 
@@ -581,7 +579,7 @@ async def stream(
         raise HTTPException(
             status_code=500,
             detail=f"Search failed: {exc}",
-        )
+        ) from exc
 
     logger.info(
         "SEARCH RESULTS: %d",
@@ -796,9 +794,7 @@ async def stream(
     # -----------------------------------------------------
 
     try:
-        from app.filtering.sorting import (
-            sort_torrents
-        )
+        from app.filtering.sorting import sort_torrents
 
         sort_criteria = cfg.get(
             "sort_criteria"
@@ -1332,7 +1328,7 @@ async def playback(
                     f"Unable to initialize "
                     f"debrid provider: {_redact(exc, api_key)}"
                 ),
-            )
+            ) from None
 
         # -------------------------------------------------
         # MAGNET
@@ -1377,7 +1373,7 @@ async def playback(
                     f"Failed to add torrent: "
                     f"{_redact(exc, api_key)}"
                 ),
-            )
+            ) from None
 
         # -------------------------------------------------
         # RESOLVE PLAYBACK

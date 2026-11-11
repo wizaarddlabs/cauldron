@@ -1,5 +1,4 @@
 """Tests for the filtering pipeline."""
-import pytest
 from app.filtering.pipeline import FilterPipeline
 from app.models import TorrentResult
 

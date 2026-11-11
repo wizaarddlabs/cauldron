@@ -4,16 +4,14 @@ import re
 import time
 
 from app.config import get_settings
-from app.models import TorrentResult
-from app.scrapers.base import Scraper
-from app.scrapers.public_scraper import PublicScraper
-from app.scrapers.comet import CometScraper
-from app.scrapers.mediafusion import MediaFusionScraper
 from app.debrid.torrin import TorrinClient
-
+from app.models import TorrentResult
 from app.ranking.preferences import RankingPreferences
 from app.ranking.scorer import rank_results
-
+from app.scrapers.base import Scraper
+from app.scrapers.comet import CometScraper
+from app.scrapers.mediafusion import MediaFusionScraper
+from app.scrapers.public_scraper import PublicScraper
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -707,7 +705,7 @@ async def _safe_search(
 
         return results
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "Scraper %s timed out after %.2fs for %r",
             scraper.name,
@@ -739,7 +737,7 @@ async def _safe_torrin_account_search(api_key: str) -> list[TorrentResult]:
             time.perf_counter() - started_at,
         )
         return results
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "Torrin account search timed out after %.2fs",
             time.perf_counter() - started_at,

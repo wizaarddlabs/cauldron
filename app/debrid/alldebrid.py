@@ -4,13 +4,10 @@ AllDebrid API client.
 Docs: https://docs.alldebrid.com/
 """
 import logging
-from typing import Optional
-
-from app.http_client import http_session
 
 from app.config import get_settings
 from app.debrid.base import DebridClient
-
+from app.http_client import http_session
 from app.models import CacheStatus, ResolveResponse
 
 logger = logging.getLogger(__name__)
@@ -51,7 +48,7 @@ class AllDebridClient(DebridClient):
             resp = await client.get(url, params={**self._params, "id": torrent_id}, headers=self._headers)
             resp.raise_for_status()
             data = resp.json()
-            
+
             # v4.1 structure: data.magnets.files for file list
             if data.get("status") == "success":
                 magnet = data.get("data", {}).get("magnets", {})
@@ -59,43 +56,43 @@ class AllDebridClient(DebridClient):
 
                 # Ultra-robust parsing - try every possible structure
                 parsed_files = []
-                
+
                 # Method 1: Direct file structure with 'l' field
                 for file in files:
                     if not isinstance(file, dict):
                         continue
-                    
+
                     # Try all possible field names for download link
                     link = (
-                        file.get("l") or 
-                        file.get("link") or 
+                        file.get("l") or
+                        file.get("link") or
                         file.get("url") or
                         file.get("download") or
                         file.get("stream")
                     )
-                    
+
                     # Try all possible field names for filename
                     name = (
-                        file.get("n") or 
-                        file.get("name") or 
+                        file.get("n") or
+                        file.get("name") or
                         file.get("filename") or
                         file.get("title")
                     )
-                    
+
                     # Try all possible field names for size
                     size = (
-                        file.get("s") or 
-                        file.get("size") or 
+                        file.get("s") or
+                        file.get("size") or
                         file.get("filesize")
                     )
-                    
+
                     if link:
                         parsed_files.append({
                             "name": name,
                             "link": link,
                             "size": size
                         })
-                
+
                 # Method 2: If no files found, try nested structure
                 if not parsed_files:
                     for file in files:
@@ -105,17 +102,17 @@ class AllDebridClient(DebridClient):
                                 for entry in entries:
                                     if isinstance(entry, dict):
                                         link = (
-                                            entry.get("l") or 
-                                            entry.get("link") or 
+                                            entry.get("l") or
+                                            entry.get("link") or
                                             entry.get("url")
                                         )
                                         name = (
-                                            entry.get("n") or 
-                                            entry.get("name") or 
+                                            entry.get("n") or
+                                            entry.get("name") or
                                             entry.get("filename")
                                         )
                                         size = (
-                                            entry.get("s") or 
+                                            entry.get("s") or
                                             entry.get("size")
                                         )
                                         if link:
@@ -124,7 +121,7 @@ class AllDebridClient(DebridClient):
                                                 "link": link,
                                                 "size": size
                                             })
-                
+
                 # Method 3: If still no files, try treating files as simple strings
                 if not parsed_files and files:
                     for file in files:
@@ -135,13 +132,13 @@ class AllDebridClient(DebridClient):
                                 "link": file,
                                 "size": None
                             })
-                
+
                 return parsed_files
             else:
                 return []
 
     async def get_playback_link(
-        self, torrent_id: str, file_index: Optional[int] = None
+        self, torrent_id: str, file_index: int | None = None
     ) -> ResolveResponse:
         try:
             files = await self.list_files(torrent_id)

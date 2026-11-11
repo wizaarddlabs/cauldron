@@ -3,14 +3,11 @@ Real-Debrid API client.
 Docs: https://api.real-debrid.com/
 """
 
-from typing import Optional
-
-from app.http_client import http_session
 
 from app.config import get_settings
 from app.debrid.base import DebridClient
+from app.http_client import http_session
 from app.models import CacheStatus, ResolveResponse
-
 
 settings = get_settings()
 
@@ -167,7 +164,7 @@ class RealDebridClient(DebridClient):
     async def get_playback_link(
         self,
         torrent_id: str,
-        file_index: Optional[int] = None
+        file_index: int | None = None
     ) -> ResolveResponse:
 
         async with http_session(timeout=15) as client:

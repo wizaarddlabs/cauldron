@@ -3,7 +3,6 @@ Application configuration.
 All values are overridable via environment variables / .env file.
 """
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,7 +20,7 @@ class Settings(BaseSettings):
     addon_name: str = "Cauldron"
     addon_version: str = __version__
     addon_url: str = "http://localhost:8000"
-    admin_api_key: Optional[str] = Field(
+    admin_api_key: str | None = Field(
         default=None,
         description="Required to change shared ranking preferences",
     )
@@ -32,12 +31,12 @@ class Settings(BaseSettings):
     premiumize_api_base: str = "https://www.premiumize.me/api"
     torbox_api_base: str = "https://api.torbox.app/v1/api"
     torrin_api_base: str = "https://api.torrin.app"
-    torrin_api_key: Optional[str] = None
+    torrin_api_key: str | None = None
     offcloud_api_base: str = "https://offcloud.com/api"
     offcloud_fetch_sizes: bool = True  # Fetch file sizes via HEAD requests (adds latency)
     offcloud_size_cache_ttl: int = 60 * 60  # 1 hour cache for file sizes
     # --- Cache ---
-    redis_url: Optional[str] = Field(default=None, description="e.g. redis://localhost:6379/0")
+    redis_url: str | None = Field(default=None, description="e.g. redis://localhost:6379/0")
     cache_ttl_search: int = 60 * 60       # 1 hour for scrape results (increased for high-traffic)
     cache_ttl_availability: int = 60 * 15  # 15 min for debrid-cache checks
     redis_max_memory: str = "512mb"      # Redis max memory limit for production
@@ -51,7 +50,7 @@ class Settings(BaseSettings):
     httpx_max_keepalive_connections: int = 20  # Idle connections kept open for reuse
     bitsearch_enabled: bool = True
     bitsearch_api_base: str = "https://bitsearch.to/api/v1"
-    bitsearch_api_key: Optional[str] = None
+    bitsearch_api_key: str | None = None
     bitsearch_cache_ttl_seconds: int = 60 * 60
     # Zilean is a self-hosted, optional index of DMM hash-list metadata.
     zilean_enabled: bool = False

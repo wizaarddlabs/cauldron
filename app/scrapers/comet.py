@@ -16,12 +16,10 @@ from __future__ import annotations
 import re
 from urllib.parse import quote, unquote
 
-from app.http_client import http_session
-
 from app.config import get_settings
+from app.http_client import http_session
 from app.models import TorrentResult
 from app.scrapers.base import Scraper
-
 
 settings = get_settings()
 

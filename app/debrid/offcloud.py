@@ -13,16 +13,13 @@ IMPORTANT:
 import asyncio
 import logging
 import time
-from typing import Optional
 
 import httpx
 
-from app.http_client import HttpSession, http_session
-
 from app.config import get_settings
 from app.debrid.base import DebridClient
-from app.models import CacheStatus, DebridProvider, ResolveResponse
-
+from app.http_client import HttpSession, http_session
+from app.models import CacheStatus, ResolveResponse
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -99,14 +96,14 @@ class OffcloudClient(DebridClient):
     async def check_cache(self, info_hashes: list[str]) -> dict[str, CacheStatus]:
         """
         Check which info hashes are cached on Offcloud.
-        
+
         Uses the Offcloud /api/cache endpoint to check instant availability.
         """
         if not info_hashes:
             return {}
 
         url = self._url("cache")
-        
+
         result = {}
 
         # Offcloud accepts hashes as a JSON array in POST data
@@ -120,10 +117,10 @@ class OffcloudClient(DebridClient):
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                
+
                 # Parse the response - Offcloud returns cachedItems array
                 cached_items = data.get("cachedItems", [])
-                
+
                 # Mark hashes based on response
                 for h in info_hashes:
                     if h in cached_items:
@@ -131,12 +128,12 @@ class OffcloudClient(DebridClient):
                     else:
                         # If hash not in cached list, treat as not cached
                         result[h] = CacheStatus.NOT_CACHED
-                        
+
             except Exception as e:
                 # On error, return unknown for all hashes
                 logger.warning("Offcloud cache check failed: %s", e)
                 return {h: CacheStatus.UNKNOWN for h in info_hashes}
-        
+
         return result
 
     async def add_magnet(self, magnet: str) -> str:
@@ -205,7 +202,7 @@ class OffcloudClient(DebridClient):
                     "size": size,
                     "url": file_url,
                 }
-                for index, (file_url, size) in enumerate(zip(file_urls, sizes))
+                for index, (file_url, size) in enumerate(zip(file_urls, sizes, strict=True))
             ]
 
         # Fallback for other response formats
@@ -224,7 +221,7 @@ class OffcloudClient(DebridClient):
         ]
 
     async def get_playback_link(
-        self, torrent_id: str, file_index: Optional[int] = None
+        self, torrent_id: str, file_index: int | None = None
     ) -> ResolveResponse:
         try:
             files = await self.list_files(torrent_id)

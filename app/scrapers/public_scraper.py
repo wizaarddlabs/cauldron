@@ -11,23 +11,21 @@ Sources:
 - EZTV (API) - TV-focused
 """
 
+import asyncio
 import logging
 import re
-import asyncio
 import time
 from urllib.parse import quote
-from typing import Any
 
 import httpx
-
-from app.http_client import http_session
 from bs4 import BeautifulSoup
 
 from app.config import get_settings
+from app.http_client import http_session
 from app.models import TorrentResult
+from app.scrapers.base import Scraper
 
 logger = logging.getLogger(__name__)
-from app.scrapers.base import Scraper
 
 settings = get_settings()
 

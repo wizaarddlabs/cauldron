@@ -4,7 +4,6 @@ Abstract interface every debrid provider client must implement.
 Adding a new provider = subclass this and implement the four methods.
 """
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from app.models import CacheStatus, ResolveResponse
 
@@ -38,7 +37,7 @@ class DebridClient(ABC):
 
     @abstractmethod
     async def get_playback_link(
-        self, torrent_id: str, file_index: Optional[int] = None
+        self, torrent_id: str, file_index: int | None = None
     ) -> ResolveResponse:
         """Resolve a direct, unrestricted streaming/download link for a file."""
         raise NotImplementedError

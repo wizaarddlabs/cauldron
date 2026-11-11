@@ -2,11 +2,10 @@ import json
 import os
 import sqlite3
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 from cryptography.fernet import Fernet, InvalidToken
-
 
 DB = Path("/data/cauldron.db")
 _ENCRYPTED_PREFIX = "fernet:"
@@ -66,7 +65,7 @@ def save_config(data):
             """,
             (
                 config_id,
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
                 _ENCRYPTED_PREFIX
                 + _get_fernet().encrypt(
                     json.dumps(data).encode("utf-8")

@@ -1,7 +1,6 @@
 """Torrent title validation utilities."""
 
 import re
-from typing import Optional
 
 from rapidfuzz import fuzz
 
@@ -109,7 +108,7 @@ def validate_torrent_title(
     expected_title: str,
     expected_year: int | None,
     media_type: str,
-    aka_titles: Optional[list[str]] = None,
+    aka_titles: list[str] | None = None,
     similarity_threshold: int = 75,
 ) -> tuple[bool, str]:
     """

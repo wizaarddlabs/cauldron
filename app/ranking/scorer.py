@@ -1,7 +1,7 @@
+
+from app.filtering.matchers import LANGUAGE_PATTERNS, _match_patterns
 from app.models import TorrentResult
 from app.ranking.preferences import RankingPreferences
-from app.filtering.matchers import LANGUAGE_PATTERNS, _match_patterns
-import re
 
 
 def score_result(

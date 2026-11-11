@@ -3,14 +3,12 @@ TorBox API client.
 Docs: https://api-docs.torbox.app/
 """
 import logging
-from typing import Optional
 
 import httpx
 
-from app.http_client import http_session
-
 from app.config import get_settings
 from app.debrid.base import DebridClient
+from app.http_client import http_session
 from app.models import CacheStatus, ResolveResponse
 
 settings = get_settings()
@@ -81,7 +79,7 @@ class TorBoxClient(DebridClient):
             return (item or {}).get("files", [])
 
     async def get_playback_link(
-        self, torrent_id: str, file_index: Optional[int] = None
+        self, torrent_id: str, file_index: int | None = None
     ) -> ResolveResponse:
         # First try to get files - if it's already added
         try:
@@ -107,7 +105,7 @@ class TorBoxClient(DebridClient):
                 )
         except Exception as e:
             logger.warning(f"Error getting existing files: {e}, trying direct request")
-        
+
         # If torrent not in user list or error, request download and get playback link
         url = f"{self._base}/torrents/requestdl"
         async with http_session(timeout=15) as client:

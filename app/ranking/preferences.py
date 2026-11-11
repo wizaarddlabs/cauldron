@@ -1,7 +1,6 @@
-from dataclasses import dataclass, asdict, field
-from pathlib import Path
 import json
-
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 PREF_FILE = Path("/data/ranking_preferences.json")
 
@@ -91,7 +90,7 @@ def get_preferences():
 
     try:
 
-        with open(PREF_FILE,"r") as f:
+        with open(PREF_FILE) as f:
 
             data=json.load(f)
 

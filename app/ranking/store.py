@@ -1,9 +1,8 @@
 import json
-from pathlib import Path
 from dataclasses import asdict
+from pathlib import Path
 
 from app.ranking.preferences import RankingPreferences
-
 
 PREF_FILE = Path("/data/ranking_preferences.json")
 

@@ -3,35 +3,31 @@ Standalone REST API: search across scrapers, check debrid cache status,
 resolve a magnet to a playable link, and manage ranking preferences.
 """
 
-from fastapi import APIRouter, Header, HTTPException, Query
 import hashlib
 import json
 import logging
 
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from app.cache.store import cache_get, cache_set, get_cache_stats
 from app.config import get_settings
 from app.debrid.factory import get_debrid_client
-
 from app.models import (
-    CacheStatus,
     AvailabilityRequest,
+    CacheStatus,
     DebridProvider,
     ResolveRequest,
     ResolveResponse,
     StreamCandidate,
     TorrentResult,
 )
-
-from app.scrapers.aggregator import search_all
-
 from app.ranking.preferences import RankingPreferences
 from app.ranking.store import (
     load_preferences,
     save_preferences,
 )
+from app.scrapers.aggregator import search_all
 from app.security import require_admin_api_key
-
 
 logger = logging.getLogger(__name__)
 

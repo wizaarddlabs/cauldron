@@ -15,11 +15,10 @@ Also: stream_link is deprecated -- Premiumize's transcode infra was
 retired, so stream_link is null for nearly everything now. Use `link`.
 """
 import logging
-from typing import Optional
-from app.http_client import http_session
+
 from app.config import get_settings
 from app.debrid.base import DebridClient
-
+from app.http_client import http_session
 from app.models import CacheStatus, ResolveResponse
 
 logger = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ class PremiumizeClient(DebridClient):
             data = resp.json()
         response_list = data.get("response", [])
         result: dict[str, CacheStatus] = {}
-        for h, cached in zip(info_hashes, response_list):
+        for h, cached in zip(info_hashes, response_list, strict=False):
             result[h] = CacheStatus.CACHED if cached else CacheStatus.NOT_CACHED
         return result
 
@@ -62,7 +61,7 @@ class PremiumizeClient(DebridClient):
             data = resp.json()
             return str(data.get("id", data.get("name", "")))
 
-    async def _get_transfer_status(self, transfer_id: str) -> Optional[dict]:
+    async def _get_transfer_status(self, transfer_id: str) -> dict | None:
         """Find a transfer's current status/folder_id/file_id via transfer/list."""
         url = f"{self._base}/transfer/list"
         async with http_session(timeout=15) as client:
@@ -93,7 +92,7 @@ class PremiumizeClient(DebridClient):
         return await self._list_folder(folder_id)
 
     async def get_playback_link(
-        self, torrent_id: str, file_index: Optional[int] = None
+        self, torrent_id: str, file_index: int | None = None
     ) -> ResolveResponse:
         try:
             transfer = await self._get_transfer_status(torrent_id)
