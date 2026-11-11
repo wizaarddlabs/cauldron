@@ -1,4 +1,4 @@
 """Cauldron - torrent & debrid aggregation engine for Stremio."""
 
 # Single source of truth for the release version.
-__version__ = "0.5.2"
+__version__ = "0.6.0"
