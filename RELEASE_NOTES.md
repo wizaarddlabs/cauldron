@@ -1,3 +1,40 @@
+# Cauldron v0.6.0
+
+## Improved
+
+- Simpler, phone-friendly setup page:
+  - One provider dropdown and one API key field replace six separate key
+    fields. "None (direct P2P streams)" is an explicit choice and the default.
+  - Choosing a debrid provider without entering its key now shows an error
+    instead of silently creating a P2P addon.
+  - New **Install in Stremio** button opens the Stremio app directly.
+  - Language menus are opaque, one option per row, and open in place on phones.
+  - Rarely changed sections (quality, codec, sorting, advanced filters) are
+    collapsed, roughly halving the page length on phones.
+  - Whole option boxes are tappable, every field has a proper label, and the
+    create button stays reachable at the bottom of the screen.
+
+## Security
+
+- The finished addon URL is no longer put in the address bar (it was added as
+  `?manifest=...`, ending up in browser history). It is shown on the page and
+  sent with `Cache-Control: no-store`.
+- API key fields are never pre-filled from the shared server settings.
+- Addons created as P2P never fall back to the server-wide `TORRIN_API_KEY`.
+
+## Fixed
+
+- `scripts/make_config.py` produced URLs that no longer worked: it built an
+  old-style base64 config, but configs are now stored in SQLite and looked up
+  by ID. It now saves a real config (including `p2p`) and prints its URL.
+
+## Removed
+
+- The old unstyled `/configure` page; `/configure` now redirects to the setup
+  page (Stremio's "Configure" button uses that path).
+
+---
+
 # Cauldron v0.5.2
 
 ## Security

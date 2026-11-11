@@ -343,45 +343,28 @@ ownership of its own files in `/data` (`cauldron.db`, `cauldron.key`,
 
 # Installing as a Stremio Addon
 
-Cauldron generates a personal configuration segment containing the selected debrid provider and API key.
+Open your Cauldron instance in a browser and fill in the setup page:
 
-The configuration is encoded into the addon URL rather than being stored in a central Cauldron database.
+1. Choose a **debrid provider** and paste its API key, or leave it on
+   **None (direct P2P streams)** to stream torrents directly without a debrid
+   service.
+2. Adjust resolutions, languages and the other filters.
+3. Tap **Create addon**, then **Install in Stremio** to open the Stremio app,
+   or copy the addon URL into **Add addon → Add addon via URL**.
 
-Generate a configuration with:
+Each addon gets its own configuration, stored encrypted in `/data/cauldron.db`
+and identified by the ID in its URL. Treat a debrid addon's URL like a
+password: anyone who has it can use that debrid account.
 
-### Real-Debrid
-
-```bash
-python scripts/make_config.py realdebrid YOUR_RD_API_KEY
-```
-
-### AllDebrid
-
-```bash
-python scripts/make_config.py alldebrid YOUR_AD_API_KEY
-```
-
-### Premiumize
+You can also create one from the command line inside the container:
 
 ```bash
-python scripts/make_config.py premiumize YOUR_PM_API_KEY
+docker compose exec app python scripts/make_config.py realdebrid YOUR_API_KEY
 ```
-
-### TorBox
 
 ```bash
-python scripts/make_config.py torbox YOUR_TB_API_KEY
+docker compose exec app python scripts/make_config.py p2p
 ```
-
-The script produces an addon URL similar to:
-
-```text
-http://localhost:8000/<config>/manifest.json
-```
-
-Paste the generated URL into Stremio's:
-
-**Add addon → Add addon via URL**
 
 ---
 
