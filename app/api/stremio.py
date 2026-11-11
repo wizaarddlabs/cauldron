@@ -1,14 +1,21 @@
 import asyncio
 import logging
-import time
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
+from app.api.metadata import resolve_media
+from app.api.playback_cache import (
+    PLAYBACK_CACHE_TTL,
+    cache_playback_url,
+    get_cached_playback_url,
+    get_playback_lock,
+)
+from app.api.stream_format import build_stream, cache_status_label
 from app.config import get_settings
 from app.config_store import load_config
 from app.debrid.factory import get_debrid_client
-from app.http_client import http_session
+from app.logging_utils import mask_config_id, redact_value
 from app.models import CacheStatus, DebridProvider
 from app.scrapers.aggregator import search_all
 
@@ -27,251 +34,6 @@ def _apply_configured_filters(results, cfg):
             status_code=500,
             detail="Failed to apply configured filters",
         ) from exc
-
-
-CINEMETA_URL = (
-    "https://v3-cinemeta.strem.io/meta/{type}/{id}.json"
-)
-
-
-# =========================================================
-# PLAYBACK CACHE
-# =========================================================
-#
-# Stremio can request the same playback URL multiple times.
-# Without caching, every GET would:
-#
-#   1. Create a new Premiumize transfer
-#   2. Poll Premiumize
-#   3. Return another redirect
-#
-# Keep resolved playback URLs temporarily in memory.
-#
-# This is intentionally short because debrid playback URLs
-# can expire.
-# =========================================================
-
-PLAYBACK_CACHE_TTL = 300  # 5 minutes
-
-# Upper bound on remembered playback URLs; oldest entries are evicted first.
-PLAYBACK_CACHE_MAX_ENTRIES = 2000
-
-_playback_cache: dict[str, tuple[str, float]] = {}
-
-_playback_locks: dict[str, asyncio.Lock] = {}
-
-_playback_cache_lock = asyncio.Lock()
-
-
-def _prune_playback_state() -> None:
-    """
-    Drop expired playback URLs and idle per-key locks.
-
-    Without this, every distinct (config, hash) pair ever played would
-    stay in memory for the lifetime of the process.
-    """
-
-    now = time.monotonic()
-
-    for key in [
-        key
-        for key, (_, expires_at) in _playback_cache.items()
-        if expires_at <= now
-    ]:
-        _playback_cache.pop(key, None)
-
-    overflow = len(_playback_cache) - PLAYBACK_CACHE_MAX_ENTRIES
-    if overflow > 0:
-        # Dicts keep insertion order, so the first keys are the oldest.
-        for key in list(_playback_cache)[:overflow]:
-            _playback_cache.pop(key, None)
-
-    for key in [
-        key
-        for key, lock in _playback_locks.items()
-        if not lock.locked() and key not in _playback_cache
-    ]:
-        _playback_locks.pop(key, None)
-
-
-async def _get_playback_lock(key: str) -> asyncio.Lock:
-    """
-    Get a per-playback lock.
-
-    This prevents multiple simultaneous Stremio requests
-    from creating multiple transfers for the same torrent.
-    """
-
-    async with _playback_cache_lock:
-        _prune_playback_state()
-
-        lock = _playback_locks.get(key)
-
-        if lock is None:
-            lock = asyncio.Lock()
-            _playback_locks[key] = lock
-
-        return lock
-
-
-def _get_cached_playback_url(key: str) -> str | None:
-    """
-    Return a cached playback URL if it is still valid.
-    """
-
-    cached = _playback_cache.get(key)
-
-    if not cached:
-        return None
-
-    playback_url, expires_at = cached
-
-    if time.monotonic() >= expires_at:
-        _playback_cache.pop(key, None)
-        return None
-
-    return playback_url
-
-
-def _cache_playback_url(
-    key: str,
-    playback_url: str,
-) -> None:
-    """
-    Cache a resolved playback URL.
-    """
-
-    _playback_cache.pop(key, None)
-    _playback_cache[key] = (
-        playback_url,
-        time.monotonic() + PLAYBACK_CACHE_TTL,
-    )
-    _prune_playback_state()
-
-
-# =========================================================
-# LOG REDACTION
-# =========================================================
-
-
-def _mask_config_id(config: str) -> str:
-    """
-    Shorten a config ID for logging.
-
-    The config ID in an addon URL grants use of the owner's debrid
-    account, so it must never be written to logs in full.
-    """
-
-    if len(config) <= 6:
-        return "***"
-
-    return f"{config[:6]}..."
-
-
-def _redact(value: object, *secrets: str | None) -> str:
-    """
-    Render ``value`` as text with any of ``secrets`` masked out.
-
-    Provider errors (e.g. httpx status errors) often embed the request
-    URL, which for some providers carries the API key as a query param.
-    """
-
-    text = str(value)
-
-    for secret in secrets:
-        if secret:
-            text = text.replace(secret, "***")
-
-    return text
-
-
-# =========================================================
-# MEDIA RESOLUTION
-# =========================================================
-
-
-async def resolve_media(type_: str, id_: str):
-    imdb_id = id_
-    season = None
-    episode = None
-
-    if type_ == "series" and ":" in id_:
-        parts = id_.split(":")
-
-        imdb_id = parts[0]
-
-        if len(parts) >= 2:
-            try:
-                season = int(parts[1])
-            except ValueError:
-                season = None
-
-        if len(parts) >= 3:
-            try:
-                episode = int(parts[2])
-            except ValueError:
-                episode = None
-
-    url = CINEMETA_URL.format(
-        type="movie" if type_ == "movie" else "series",
-        id=imdb_id,
-    )
-
-    try:
-        async with http_session(
-            timeout=15
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            data = response.json()
-
-    except Exception as exc:
-        logger.exception(
-            "Failed to resolve Cinemeta metadata"
-        )
-
-        raise HTTPException(
-            status_code=502,
-            detail=f"Unable to resolve metadata: {exc}",
-        ) from exc
-
-    meta = data.get("meta") or {}
-
-    title = meta.get("name") or meta.get("title")
-
-    if not title:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Could not resolve title for {imdb_id}",
-        )
-
-    year = meta.get("year")
-
-    try:
-        year = int(year) if year else None
-    except (TypeError, ValueError):
-        year = None
-
-    aliases = meta.get("aliases") or []
-
-    logger.info("=== RESOLVED MEDIA ===")
-    logger.info("Type: %s", type_)
-    logger.info("IMDb: %s", imdb_id)
-    logger.info("Title: %s", title)
-    logger.info("Year: %s", year)
-    logger.info("Aliases: %s", aliases)
-    logger.info("Season: %s", season)
-    logger.info("Episode: %s", episode)
-
-    return {
-        "type": type_,
-        "imdb_id": imdb_id,
-        "title": title,
-        "year": year,
-        "aliases": aliases,
-        "season": season,
-        "episode": episode,
-    }
 
 
 # =========================================================
@@ -387,16 +149,6 @@ def _normalize_debrid_config(cfg):
 # =========================================================
 
 
-def _cache_status_label(status):
-    if status == CacheStatus.CACHED:
-        return "⚡ Cached"
-
-    if status == CacheStatus.NOT_CACHED:
-        return "⏳ Uncached"
-
-    return "❔ Unknown"
-
-
 def _mark_torrin_account_results_cached(
     cache_status_map,
     torrents,
@@ -480,7 +232,7 @@ async def stream(
         "Stream request: type=%s id=%s config=%s",
         type,
         id,
-        _mask_config_id(config),
+        mask_config_id(config),
     )
 
     # -----------------------------------------------------
@@ -720,9 +472,9 @@ async def stream(
                         )
                     )
 
-                    logger.info(
+                    logger.debug(
                         "CACHE: %-12s | %s",
-                        _cache_status_label(
+                        cache_status_label(
                             status
                         ),
                         getattr(
@@ -873,232 +625,23 @@ async def stream(
 
     for torrent in results:
         try:
-            info_hash = str(
-                getattr(
-                    torrent,
-                    "info_hash",
-                    "",
-                )
-            ).lower()
-
-            if not info_hash:
-                logger.warning(
-                    "Skipping torrent without "
-                    "info hash: %s",
-                    getattr(
-                        torrent,
-                        "title",
-                        "unknown",
-                    ),
-                )
-
-                continue
-
-            cache_status = (
-                cache_status_map.get(
-                    info_hash,
-                    CacheStatus.UNKNOWN,
-                )
-            )
-
-            cache_label = (
-                _cache_status_label(
-                    cache_status
-                )
-            )
-
-            quality = getattr(
+            stream_data = build_stream(
                 torrent,
-                "quality",
-                None,
+                cache_status_map=cache_status_map,
+                has_debrid=bool(debrid_client),
+                base_url=base_url,
+                config=config,
             )
+        except Exception:
+            logger.exception("Failed converting torrent to stream")
+            continue
 
-            indexer = getattr(
-                torrent,
-                "indexer",
-                None,
-            )
-
-            seeders = getattr(
-                torrent,
-                "seeders",
-                None,
-            )
-
-            size_bytes = getattr(
-                torrent,
-                "size_bytes",
-                None,
-            )
-
-            # -------------------------------------------------
-            # STREAM NAME
-            # -------------------------------------------------
-
-            name_parts = [
-                "🧙 Cauldron"
-            ]
-
-            if indexer:
-                name_parts.append(
-                    str(indexer)
-                )
-
-            if quality:
-                name_parts.append(
-                    str(quality)
-                )
-
-            if debrid_client:
-                name_parts.append(
-                    cache_label
-                )
-            else:
-                name_parts.append(
-                    "P2P"
-                )
-
-            stream_name = (
-                " • ".join(
-                    name_parts
-                )
-            )
-
-            # -------------------------------------------------
-            # STREAM TITLE
-            # -------------------------------------------------
-
-            title_parts = [
-                str(
-                    getattr(
-                        torrent,
-                        "title",
-                        "Unknown",
-                    )
-                )
-            ]
-
-            if quality:
-                title_parts.append(
-                    f"Quality: {quality}"
-                )
-
-            if seeders is not None:
-                title_parts.append(
-                    f"Seeds: {seeders}"
-                )
-
-            if size_bytes:
-                try:
-                    size_gb = (
-                        float(size_bytes)
-                        / (1024 ** 3)
-                    )
-
-                    if size_gb >= 1:
-                        title_parts.append(
-                            f"Size: "
-                            f"{size_gb:.2f} GB"
-                        )
-
-                    else:
-                        size_mb = (
-                            float(size_bytes)
-                            / (1024 ** 2)
-                        )
-
-                        title_parts.append(
-                            f"Size: "
-                            f"{size_mb:.0f} MB"
-                        )
-
-                except (
-                    TypeError,
-                    ValueError,
-                ):
-                    pass
-
-            if debrid_client:
-                title_parts.append(
-                    f"Cache: {cache_label}"
-                )
-
-            # -------------------------------------------------
-            # PLAYBACK URL
-            # -------------------------------------------------
-
-            if debrid_client:
-                stream_url = (
-                    f"{base_url}/"
-                    f"{config}/playback/"
-                    f"{info_hash}"
-                )
-
-                stream_data = {
-                    "name": stream_name,
-                    "title": "\n".join(
-                        title_parts
-                    ),
-                    "url": stream_url,
-                    "behaviorHints": {
-                        "bingeGroup": (
-                            "cauldron"
-                        ),
-                    },
-                }
-
-                logger.debug(
-                    "Playback URL: %s",
-                    stream_url.replace(
-                        config,
-                        _mask_config_id(config),
-                    ),
-                )
-
-            else:
-                magnet = getattr(
-                    torrent,
-                    "magnet",
-                    None,
-                )
-
-                stream_data = {
-                    "name": stream_name,
-                    "title": "\n".join(
-                        title_parts
-                    ),
-                    "infoHash": info_hash,
-                    "sources": (
-                        [magnet]
-                        if magnet
-                        else []
-                    ),
-                    "behaviorHints": {
-                        "bingeGroup": (
-                            "cauldron"
-                        ),
-                    },
-                }
-
-            streams.append(
-                stream_data
-            )
-
-            logger.info(
-                "STREAM: %-30s | %s",
-                stream_name,
-                getattr(
-                    torrent,
-                    "title",
-                    "unknown",
-                ),
-            )
-
-        except Exception as exc:
-            logger.exception(
-                "Failed converting torrent "
-                "to stream: %s",
-                exc,
+        if stream_data is not None:
+            streams.append(stream_data)
+            logger.debug(
+                "Stream: %-30s | %s",
+                stream_data["name"],
+                getattr(torrent, "title", "unknown"),
             )
 
     logger.info(
@@ -1142,7 +685,7 @@ async def playback(
         "Playback request: method=%s hash=%s config=%s",
         request.method,
         info_hash,
-        _mask_config_id(config),
+        mask_config_id(config),
     )
 
     # -----------------------------------------------------
@@ -1233,7 +776,7 @@ async def playback(
     # CHECK CACHE
     # -----------------------------------------------------
 
-    cached_url = _get_cached_playback_url(
+    cached_url = get_cached_playback_url(
         cache_key
     )
 
@@ -1272,7 +815,7 @@ async def playback(
     # The others wait and then use the newly cached URL.
     # -----------------------------------------------------
 
-    playback_lock = await _get_playback_lock(
+    playback_lock = await get_playback_lock(
         cache_key
     )
 
@@ -1286,7 +829,7 @@ async def playback(
         # while we were waiting for the lock.
         # -------------------------------------------------
 
-        cached_url = _get_cached_playback_url(
+        cached_url = get_cached_playback_url(
             cache_key
         )
 
@@ -1319,14 +862,14 @@ async def playback(
         except Exception as exc:
             logger.error(
                 "Unable to initialize debrid provider: %s",
-                _redact(exc, api_key),
+                redact_value(exc, api_key),
             )
 
             raise HTTPException(
                 status_code=500,
                 detail=(
                     f"Unable to initialize "
-                    f"debrid provider: {_redact(exc, api_key)}"
+                    f"debrid provider: {redact_value(exc, api_key)}"
                 ),
             ) from None
 
@@ -1364,14 +907,14 @@ async def playback(
             logger.error(
                 "Failed to add magnet to %s: %s",
                 provider_str,
-                _redact(exc, api_key),
+                redact_value(exc, api_key),
             )
 
             raise HTTPException(
                 status_code=502,
                 detail=(
                     f"Failed to add torrent: "
-                    f"{_redact(exc, api_key)}"
+                    f"{redact_value(exc, api_key)}"
                 ),
             ) from None
 
@@ -1418,7 +961,7 @@ async def playback(
                     # CACHE RESOLVED URL
                     # -----------------------------------------
 
-                    _cache_playback_url(
+                    cache_playback_url(
                         cache_key,
                         playback_url,
                     )
@@ -1440,7 +983,7 @@ async def playback(
                 )
 
             except Exception as exc:
-                last_error = _redact(exc, api_key)
+                last_error = redact_value(exc, api_key)
 
                 logger.info(
                     "Playback not ready "

@@ -64,6 +64,37 @@ class RedactSecretsFilter(logging.Filter):
         return True
 
 
+def mask_config_id(config: str) -> str:
+    """
+    Shorten a config ID for logging.
+
+    The config ID in an addon URL grants use of the owner's debrid
+    account, so it must never be written to logs in full.
+    """
+
+    if len(config) <= 6:
+        return "***"
+
+    return f"{config[:6]}..."
+
+
+def redact_value(value: object, *secrets: str | None) -> str:
+    """
+    Render ``value`` as text with any of ``secrets`` masked out.
+
+    Provider errors (e.g. httpx status errors) often embed the request
+    URL, which for some providers carries the API key as a query param.
+    """
+
+    text = str(value)
+
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "***")
+
+    return text
+
+
 def install_redaction_filter() -> None:
     """
     Attach the redaction filter to the root handlers (covers app loggers,
