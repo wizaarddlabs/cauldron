@@ -1,3 +1,18 @@
+# Cauldron v0.5.2
+
+## Security
+
+- API keys were written to the logs in plain text. httpx logs every outbound
+  request at INFO with the full URL, and Premiumize and TorBox take the API key
+  as a URL query parameter. The log redaction filter only checked plain-string
+  arguments, so it missed httpx's URL objects. Keys and config IDs are now
+  masked in these lines too.
+
+  If you run an instance, treat any existing container logs as containing
+  your users' debrid API keys.
+
+---
+
 # Cauldron v0.5.1
 
 ## Fixed
