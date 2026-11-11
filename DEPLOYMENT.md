@@ -54,10 +54,25 @@ ignores. Start from the example:
 cp docker-compose.override.example.yml docker-compose.override.yml
 ```
 
-The example publishes the app on `127.0.0.1:8008`, joins the external
-`npm_default` network used by Nginx Proxy Manager, and live-mounts `./app`
-(read-only) so `git pull && docker compose restart app` deploys without a
-rebuild.
+The example publishes the app on `127.0.0.1:8008` and joins the external
+`npm_default` network used by Nginx Proxy Manager.
+
+### Image-based deploys
+
+The app service runs the image that CI publishes to
+`ghcr.io/wizaarddlabs/cauldron` (public, linux/amd64). Choose the tag with
+`CAULDRON_VERSION` in `.env`: `latest` follows `main`; pin a release such as
+`0.5.1` to upgrade only when you change it. To update:
+
+```bash
+docker compose pull app
+docker compose up -d
+```
+
+A `git pull` is only needed when the compose files themselves change. Don't
+bind-mount `./app` into the container: it would replace the image's code with
+whatever is checked out on the host. To run local changes instead, build the
+checkout with `docker compose up -d --build`.
 
 ### Upgrading an existing deployment
 
@@ -77,7 +92,8 @@ argument). The manual equivalent is:
 2. Make sure `.env` sets `ADDON_URL` (and `ADMIN_API_KEY` if you use shared
    ranking settings) — these are no longer hardcoded in `docker-compose.yml`.
 3. If you run Zilean, add `COMPOSE_PROFILES=full` to `.env`.
-4. Rebuild: `docker compose up -d --build`.
+4. Pull and restart: `docker compose pull app && docker compose up -d`.
+5. If an older override still bind-mounts `./app:/srv/app`, remove that line.
 
 The image now runs as an unprivileged `cauldron` user (uid 10001). On start the
 entrypoint takes ownership of `/data`, `cauldron.db*`, `cauldron.key` and

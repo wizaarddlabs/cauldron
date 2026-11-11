@@ -1,3 +1,22 @@
+# Cauldron v0.5.1
+
+## Fixed
+
+- The app no longer crashes on start-up when run through `docker-compose.yml`.
+  v0.5.0's compose file passes `CORS_ORIGINS=*`, which the settings loader
+  tried to parse as JSON. `CORS_ORIGINS` now accepts `*`, a comma-separated
+  list or a JSON list.
+
+## Improved
+
+- `docker-compose.yml` runs the published image
+  `ghcr.io/wizaarddlabs/cauldron:${CAULDRON_VERSION:-latest}` instead of
+  building on the server. `docker compose up -d --build` still builds locally.
+- `scripts/upgrade-vps.sh` pulls the image (falling back to a local build) and
+  warns if an override still bind-mounts `./app` over the image's code.
+
+---
+
 # Cauldron v0.5.0
 
 ## Security

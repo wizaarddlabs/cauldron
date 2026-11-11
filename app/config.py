@@ -2,9 +2,10 @@
 Application configuration.
 All values are overridable via environment variables / .env file.
 """
+import json
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app import __version__
@@ -58,14 +59,30 @@ class Settings(BaseSettings):
     zilean_max_results: int = 100
 
     # --- CORS ---
-    cors_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")
+    # Read as a plain string: pydantic-settings JSON-decodes list-typed env
+    # vars, so CORS_ORIGINS=* (or a,b) would crash at startup. Accepts "*",
+    # a comma-separated list, or a JSON list.
+    cors_origins_raw: str = Field(
+        default="*",
+        validation_alias="CORS_ORIGINS",
+        description="Allowed CORS origins",
+    )
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v):
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    @property
+    def cors_origins(self) -> list[str]:
+        raw = self.cors_origins_raw.strip()
+
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+            except ValueError:
+                parsed = None
+
+            if isinstance(parsed, list):
+                return [str(origin).strip() for origin in parsed if str(origin).strip()]
+
+        origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        return origins or ["*"]
 
 
 @lru_cache

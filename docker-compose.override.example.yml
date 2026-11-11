@@ -10,10 +10,8 @@ services:
   app:
     ports: !override
       - "127.0.0.1:8008:8000"
-    volumes:
-      # Live-mount the source so `git pull && docker compose restart app`
-      # deploys without rebuilding the image.
-      - ./app:/srv/app:ro
+    # Don't bind-mount ./app here: it would replace the published image's
+    # code with whatever is checked out on the host.
     networks:
       - cauldron-network
       - npm_default

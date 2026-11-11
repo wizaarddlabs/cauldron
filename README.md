@@ -319,15 +319,20 @@ The API will be available at:
 http://localhost:8000
 ```
 
-The default stack runs the app and Redis. The app is published on
+The default stack runs the published image
+`ghcr.io/wizaarddlabs/cauldron` (linux/amd64) and Redis. `CAULDRON_VERSION` in
+`.env` picks the tag (`latest` follows `main`; pin e.g. `0.5.1`). Update with
+`docker compose pull app && docker compose up -d`, or build this checkout
+instead with `docker compose up -d --build`.
+
+The app is published on
 `127.0.0.1:8000`; change this with `CAULDRON_BIND` / `CAULDRON_PORT` in `.env`,
 and set `ADDON_URL` to the address Stremio will use.
 
 The optional Zilean + PostgreSQL services start with the `full` profile
 (`docker compose --profile full up -d`, or `COMPOSE_PROFILES=full` in `.env`).
 
-Host-specific settings (extra networks, a different port, live-mounting the
-source) belong in a gitignored `docker-compose.override.yml`; see
+Host-specific settings (extra networks, a different port) belong in a gitignored `docker-compose.override.yml`; see
 `docker-compose.override.example.yml` and [DEPLOYMENT.md](DEPLOYMENT.md).
 
 The container runs as an unprivileged `cauldron` user. On start-up it takes
