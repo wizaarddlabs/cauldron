@@ -1,19 +1,16 @@
 """Filtering pipeline for torrent results."""
 
-from typing import List
-
-from app.filtering.resolution import (
-    matches_resolution,
-    detect_resolution,
-)
 
 from app.filtering.matchers import (
+    matches_codec,
+    matches_excluded_languages,
     matches_language,
     matches_required_languages,
-    matches_excluded_languages,
-    matches_codec,
 )
-
+from app.filtering.resolution import (
+    detect_resolution,
+    matches_resolution,
+)
 from app.models import TorrentResult
 
 
@@ -49,8 +46,8 @@ class FilterPipeline:
 
     def apply(
         self,
-        torrents: List[TorrentResult]
-    ) -> List[TorrentResult]:
+        torrents: list[TorrentResult]
+    ) -> list[TorrentResult]:
 
         res_allowed = self.cfg.get(
             "resolution",
@@ -64,11 +61,6 @@ class FilterPipeline:
 
         required_languages = self.cfg.get(
             "required_languages",
-            []
-        ) or []
-
-        preferred_languages = self.cfg.get(
-            "preferred_languages",
             []
         ) or []
 
@@ -126,12 +118,12 @@ class FilterPipeline:
 
             # Language filter (general)
             # Skip if required or excluded languages are set, as those are more specific
-            if not required_languages and not excluded_languages:
-                if not matches_language(
-                    t.title,
-                    languages
-                ):
-                    continue
+            if (
+                not required_languages
+                and not excluded_languages
+                and not matches_language(t.title, languages)
+            ):
+                continue
 
             # Required languages filter (must contain at least one)
             if not matches_required_languages(

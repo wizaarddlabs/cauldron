@@ -16,7 +16,7 @@ class FakeAsyncClient:
     async def __aexit__(self, exc_type, exc_value, traceback):
         return False
 
-    async def get(self, url, headers):
+    async def get(self, url, headers=None):
         if url.endswith("/torrents"):
             return httpx.Response(
                 200,
@@ -45,7 +45,7 @@ class FakeAsyncClient:
 
 @pytest.mark.asyncio
 async def test_torrin_cache_status_parses_availability(monkeypatch):
-    monkeypatch.setattr(torrin.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(torrin, "http_session", FakeAsyncClient)
 
     hashes = ["A" * 40, "b" * 40]
     result = await TorrinClient("key").check_cache(hashes)
@@ -58,7 +58,7 @@ async def test_torrin_cache_status_parses_availability(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_torrin_account_search_maps_recent_torrents(monkeypatch):
-    monkeypatch.setattr(torrin.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(torrin, "http_session", FakeAsyncClient)
 
     results = await TorrinClient("key").search_account()
 

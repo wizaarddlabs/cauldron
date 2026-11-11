@@ -1,22 +1,22 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.config import get_settings
+from app.config_store import save_config
+from app.ranking.preferences import RankingPreferences
 from app.ranking.store import (
     load_preferences,
     save_preferences,
 )
-from app.ranking.preferences import RankingPreferences
-
-from app.config import get_settings
-from app.config_store import save_config
 from app.security import require_admin_api_key
-
 
 router = APIRouter(tags=["web"])
 
 templates = Jinja2Templates(
-    directory="app/web/templates"
+    directory=Path(__file__).parent / "templates"
 )
 
 

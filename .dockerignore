@@ -4,3 +4,9 @@ data/
 __pycache__/
 *.py[cod]
 .env
+tests/
+.github/
+.env.*
+!.env.example
+zilean/
+*.md

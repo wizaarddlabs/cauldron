@@ -1,0 +1,34 @@
+[project]
+name = "cauldron"
+dynamic = ["version"]
+description = "Modular torrent & debrid aggregation engine for Stremio."
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["data"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "S110", # try/except/pass without logging
+    "S112", # try/except/continue without logging
+]
+ignore = [
+    "E501", # long strings/URLs are common in scrapers; formatting is not enforced
+    "B008", # FastAPI dependencies are declared as call defaults
+    "UP042", # StrEnum changes str() of members, which payloads rely on
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S110", "S112"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

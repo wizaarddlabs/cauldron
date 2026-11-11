@@ -18,9 +18,11 @@ means:
 The order of sort_criteria determines priority.
 """
 
-from typing import List
+import logging
 
 from app.models import TorrentResult
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------
@@ -346,12 +348,12 @@ def _sort_value(
 # ---------------------------------------------------------
 
 def sort_torrents(
-    torrents: List[TorrentResult],
-    sort_criteria: List[str] | None = None,
+    torrents: list[TorrentResult],
+    sort_criteria: list[str] | None = None,
     sort_order: str = "desc",
     allow_season_packs: bool = False,
     cache_status_map: dict | None = None,
-) -> List[TorrentResult]:
+) -> list[TorrentResult]:
 
     if not torrents:
         return []
@@ -431,37 +433,35 @@ def sort_torrents(
     # DEBUG
     # -----------------------------------------------------
 
-    print(
-        "SORT CRITERIA:",
+    logger.debug(
+        "Sort criteria: %s | order: %s",
         criteria,
-        "| ORDER:",
         "DESC" if reverse else "ASC",
-        flush=True,
     )
 
-    for index, torrent in enumerate(
-        sorted_results[:20],
-        start=1,
-    ):
-        values = tuple(
-            _sort_value(
-                torrent,
-                criterion,
-                cache_status_map,
+    if logger.isEnabledFor(logging.DEBUG):
+        for index, torrent in enumerate(
+            sorted_results[:20],
+            start=1,
+        ):
+            values = tuple(
+                _sort_value(
+                    torrent,
+                    criterion,
+                    cache_status_map,
+                )
+                for criterion in criteria
             )
-            for criterion in criteria
-        )
 
-        print(
-            f"SORT #{index:02d}: "
-            f"{values} | "
-            f"cached={_cache_rank(torrent, cache_status_map)} | "
-            f"resolution={_resolution_score(torrent)} | "
-            f"seeders={getattr(torrent, 'seeders', 0) or 0} | "
-            f"quality={_quality_score(torrent)} | "
-            f"title={torrent.title}",
-            flush=True,
-        )
+            logger.debug(
+                f"SORT #{index:02d}: "
+                f"{values} | "
+                f"cached={_cache_rank(torrent, cache_status_map)} | "
+                f"resolution={_resolution_score(torrent)} | "
+                f"seeders={getattr(torrent, 'seeders', 0) or 0} | "
+                f"quality={_quality_score(torrent)} | "
+                f"title={torrent.title}"
+            )
 
     return sorted_results
 

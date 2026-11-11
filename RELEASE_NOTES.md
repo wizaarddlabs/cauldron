@@ -1,3 +1,28 @@
+# Unreleased
+
+## Security
+
+- Config IDs (which grant use of the owner's debrid account) are shortened in
+  application and access logs; API keys in provider URLs are masked.
+- The Docker image runs as an unprivileged `cauldron` user.
+
+## Improved
+
+- All outbound requests share one pooled HTTP client, so connections are reused.
+- The playback URL cache and its locks are pruned and size-capped.
+- Quieter logs: debug-level per-result tracing, no `print()` output.
+- Large modules split up (`stremio.py`, `aggregator.py`, public scrapers).
+
+## Development
+
+- CI now runs `ruff` and `pytest`, and image publishing waits for them.
+- Test/lint dependencies moved to `requirements-dev.txt`.
+- `docker-compose.yml` is portable; host-specific settings go in a gitignored
+  `docker-compose.override.yml`. Existing servers: run
+  `./scripts/upgrade-vps.sh` after pulling (see `DEPLOYMENT.md`).
+
+---
+
 # Cauldron v0.4.0
 
 ## Improved

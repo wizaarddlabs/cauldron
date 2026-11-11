@@ -3,14 +3,11 @@ Real-Debrid API client.
 Docs: https://api.real-debrid.com/
 """
 
-from typing import Optional
-
-import httpx
 
 from app.config import get_settings
 from app.debrid.base import DebridClient
+from app.http_client import http_session
 from app.models import CacheStatus, ResolveResponse
-
 
 settings = get_settings()
 
@@ -41,7 +38,7 @@ class RealDebridClient(DebridClient):
 
         batch_size = 3
 
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
 
             for i in range(0, len(info_hashes), batch_size):
 
@@ -103,7 +100,7 @@ class RealDebridClient(DebridClient):
 
         url = f"{self._base}/torrents/addMagnet"
 
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
 
             resp = await client.post(
                 url,
@@ -149,7 +146,7 @@ class RealDebridClient(DebridClient):
             f"{torrent_id}"
         )
 
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
 
             resp = await client.get(
                 url,
@@ -167,10 +164,10 @@ class RealDebridClient(DebridClient):
     async def get_playback_link(
         self,
         torrent_id: str,
-        file_index: Optional[int] = None
+        file_index: int | None = None
     ) -> ResolveResponse:
 
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
 
             info_resp = await client.get(
                 f"{self._base}/torrents/info/{torrent_id}",

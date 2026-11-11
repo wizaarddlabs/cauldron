@@ -33,3 +33,7 @@ zilean/
 zilean.dump
 *.tar.gz
 docker-compose.yml.pre-vps
+
+# Host-specific compose overrides (see docker-compose.override.example.yml)
+docker-compose.override.yml
+.ruff_cache/

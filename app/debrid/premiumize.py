@@ -1,3 +1,4 @@
+
 """
 Premiumize API client.
 Docs: https://www.premiumize.me/api
@@ -13,11 +14,14 @@ always fails with "Folder not found or not owned by user."
 Also: stream_link is deprecated -- Premiumize's transcode infra was
 retired, so stream_link is null for nearly everything now. Use `link`.
 """
-from typing import Optional
-import httpx
+import logging
+
 from app.config import get_settings
 from app.debrid.base import DebridClient
+from app.http_client import http_session
 from app.models import CacheStatus, ResolveResponse
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -34,7 +38,7 @@ class PremiumizeClient(DebridClient):
         if not info_hashes:
             return {}
         url = f"{self._base}/cache/check"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.get(
                 url, params={**self._params, "items[]": [f"magnet:?xt=urn:btih:{h}" for h in info_hashes]}
             )
@@ -42,7 +46,7 @@ class PremiumizeClient(DebridClient):
             data = resp.json()
         response_list = data.get("response", [])
         result: dict[str, CacheStatus] = {}
-        for h, cached in zip(info_hashes, response_list):
+        for h, cached in zip(info_hashes, response_list, strict=False):
             result[h] = CacheStatus.CACHED if cached else CacheStatus.NOT_CACHED
         return result
 
@@ -51,16 +55,16 @@ class PremiumizeClient(DebridClient):
         # (see _get_transfer_status) to obtain a folder_id or file_id
         # before anything can be browsed or played.
         url = f"{self._base}/transfer/create"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.post(url, params=self._params, data={"src": magnet})
             resp.raise_for_status()
             data = resp.json()
             return str(data.get("id", data.get("name", "")))
 
-    async def _get_transfer_status(self, transfer_id: str) -> Optional[dict]:
+    async def _get_transfer_status(self, transfer_id: str) -> dict | None:
         """Find a transfer's current status/folder_id/file_id via transfer/list."""
         url = f"{self._base}/transfer/list"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.get(url, params=self._params)
             resp.raise_for_status()
             data = resp.json()
@@ -71,7 +75,7 @@ class PremiumizeClient(DebridClient):
 
     async def _list_folder(self, folder_id: str) -> list[dict]:
         url = f"{self._base}/folder/list"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.get(url, params={**self._params, "id": folder_id})
             resp.raise_for_status()
             data = resp.json()
@@ -88,7 +92,7 @@ class PremiumizeClient(DebridClient):
         return await self._list_folder(folder_id)
 
     async def get_playback_link(
-        self, torrent_id: str, file_index: Optional[int] = None
+        self, torrent_id: str, file_index: int | None = None
     ) -> ResolveResponse:
         try:
             transfer = await self._get_transfer_status(torrent_id)
@@ -107,7 +111,7 @@ class PremiumizeClient(DebridClient):
             if file_id:
                 # Single-file transfer -- item/details gives the link directly.
                 url = f"{self._base}/item/details"
-                async with httpx.AsyncClient(timeout=15) as client:
+                async with http_session(timeout=15) as client:
                     resp = await client.get(url, params={**self._params, "id": file_id})
                     resp.raise_for_status()
                     item = resp.json()
@@ -135,5 +139,5 @@ class PremiumizeClient(DebridClient):
             raise RuntimeError("Transfer finished but produced no file or folder on Premiumize")
 
         except Exception as e:
-            print(f"Error getting Premiumize playback link: {e}, torrent may not be ready", flush=True)
+            logger.warning(f"Error getting Premiumize playback link: {e}, torrent may not be ready")
             raise

@@ -1,0 +1,7 @@
+# Development / CI dependencies (not installed in the production image).
+-r requirements.txt
+
+pytest==8.3.2
+pytest-asyncio==0.23.5
+pytest-mock==3.14.0
+ruff==0.16.9

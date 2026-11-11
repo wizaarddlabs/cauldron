@@ -5,7 +5,7 @@ but won't share state across multiple worker processes).
 """
 import json
 import time
-from typing import Any, Optional
+from typing import Any
 
 from app.config import get_settings
 
@@ -43,7 +43,7 @@ async def get_cache_backend_status() -> str:
     return "redis"
 
 
-async def cache_get(key: str) -> Optional[Any]:
+async def cache_get(key: str) -> Any | None:
     if settings.disable_cache:
         return None
 

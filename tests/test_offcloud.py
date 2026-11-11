@@ -17,7 +17,7 @@ class FakeAsyncClient:
     async def __aexit__(self, exc_type, exc_value, traceback):
         return False
 
-    async def get(self, url):
+    async def get(self, url, **kwargs):
         return httpx.Response(
             200,
             json=self.response_data,
@@ -53,7 +53,7 @@ async def test_list_files_fetches_sizes_and_ignores_invalid_entries(monkeypatch)
         clients.append(client)
         return client
 
-    monkeypatch.setattr(offcloud.httpx, "AsyncClient", make_client)
+    monkeypatch.setattr(offcloud, "http_session", make_client)
     monkeypatch.setattr(offcloud.settings, "offcloud_fetch_sizes", True)
     offcloud._size_cache.clear()
 

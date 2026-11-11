@@ -1,6 +1,5 @@
 import re
 
-
 RESOLUTION_PATTERNS = {
     "2160p": [
         r"\b2160p\b",

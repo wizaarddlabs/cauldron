@@ -3,20 +3,25 @@ services:
     container_name: cauldron
     build: .
     ports:
-      - "127.0.0.1:8008:8000"
+      # Bound to localhost by default; put a reverse proxy in front, or set
+      # CAULDRON_BIND=0.0.0.0 to expose it directly.
+      - "${CAULDRON_BIND:-127.0.0.1}:${CAULDRON_PORT:-8000}:8000"
     volumes:
-      - ./app:/srv/app
       - ./data:/data
     environment:
       REDIS_URL: redis://redis:6379/0
-      ADDON_URL: https://cauldron.forthewizards.uk
+      ADDON_URL: ${ADDON_URL:-http://localhost:8000}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      BITSEARCH_ENABLED: ${BITSEARCH_ENABLED:-true}
+      BITSEARCH_API_KEY: ${BITSEARCH_API_KEY:-}
       ZILEAN_ENABLED: "${ZILEAN_ENABLED:-false}"
       ZILEAN_URL: ${ZILEAN_URL:-http://zilean:8181}
-      TORRIN_API_KEY: ${TORRIN_API_KEY}
+      TORRIN_API_KEY: ${TORRIN_API_KEY:-}
     restart: always
     networks:
       - cauldron-network
-      - npm_default
     depends_on:
       redis:
         condition: service_healthy
@@ -39,8 +44,12 @@ services:
       timeout: 5s
       retries: 3
 
+  # Optional Zilean stack: start with `docker compose --profile full up -d`
+  # (or COMPOSE_PROFILES=full in .env). Requires the Zilean source checked
+  # out at ./zilean (not part of this repository).
   zilean:
     container_name: cauldron-zilean
+    profiles: ["full"]
     build:
       context: ./zilean
       dockerfile: Dockerfile
@@ -57,7 +66,7 @@ services:
       retries: 5
       start_period: 20s
     environment:
-      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD:-}
 
       # ASP.NET
       ASPNETCORE_URLS: http://+:8181
@@ -69,7 +78,7 @@ services:
         Port=5432;
         Database=zilean;
         Username=zilean;
-        Password=${ZILEAN_POSTGRES_PASSWORD}
+        Password=${ZILEAN_POSTGRES_PASSWORD:-}
 
       # Dashboard
       Zilean__EnableDashboard: "true"
@@ -87,19 +96,20 @@ services:
       Zilean__Imdb__EnableImportMatching: "true"
 
       # GitHub authentication for DMM Hashlists
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
 
     networks:
       - cauldron-network
 
   zilean-postgres:
     container_name: cauldron-postgres
+    profiles: ["full"]
     image: postgres:16-alpine
     restart: always
     environment:
       POSTGRES_DB: zilean
       POSTGRES_USER: zilean
-      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD:-}
     volumes:
       - ./data/zilean-postgres:/var/lib/postgresql/data
     networks:
@@ -118,5 +128,3 @@ volumes:
 networks:
   cauldron-network:
     driver: bridge
-  npm_default:
-    external: true
