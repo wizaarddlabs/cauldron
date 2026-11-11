@@ -31,10 +31,17 @@ def _redact_value(value: object) -> object:
     if isinstance(value, str):
         return redact_secrets(value)
 
-    if isinstance(value, BaseException):
-        return redact_secrets(str(value))
+    # Numbers keep their type so %d / %f format specifiers still work.
+    if value is None or isinstance(value, bool | int | float):
+        return value
 
-    return value
+    # Anything else (exceptions, httpx.URL, ...) is rendered with %s by the
+    # caller, so check its text. httpx logs every request with the URL as an
+    # httpx.URL object, and some providers put the API key in the query.
+    text = str(value)
+    redacted = redact_secrets(text)
+
+    return redacted if redacted != text else value
 
 
 class RedactSecretsFilter(logging.Filter):
