@@ -78,6 +78,11 @@ def _normalize_debrid_config(cfg):
 
     configured_provider = cfg.get("provider")
 
+    if configured_provider == "p2p":
+        # Explicit choice of direct P2P streams; never fall back to the
+        # server-wide Torrin key.
+        return None, None
+
     if configured_provider:
         # A generated config is authoritative. Do not silently replace a
         # missing/invalid key with the server-wide Torrin credential.

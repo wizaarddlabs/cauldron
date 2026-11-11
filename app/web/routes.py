@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
@@ -18,6 +18,99 @@ router = APIRouter(tags=["web"])
 templates = Jinja2Templates(
     directory=Path(__file__).parent / "templates"
 )
+
+
+# =========================================================
+# DEBRID PROVIDER SELECTION
+# =========================================================
+
+# Shown in this order in the provider dropdown.
+DEBRID_PROVIDERS: list[tuple[str, str]] = [
+    ("torrin", "Torrin"),
+    ("torbox", "TorBox"),
+    ("realdebrid", "Real-Debrid"),
+    ("alldebrid", "AllDebrid"),
+    ("premiumize", "Premiumize"),
+    ("offcloud", "Offcloud"),
+]
+
+# Stored as the provider for configs that stream torrents directly.
+P2P_PROVIDER = "p2p"
+
+_PROVIDER_LABELS = dict(DEBRID_PROVIDERS)
+
+# Older form / API clients send one field per provider; the first non-empty
+# one wins, matching the previous behaviour.
+_LEGACY_KEY_FIELDS = [f"{value}_key" for value, _ in DEBRID_PROVIDERS]
+
+
+def _resolve_debrid_choice(form) -> tuple[str, str | None, str | None]:
+    """
+    Return (provider, api_key, error) from the submitted form.
+
+    No provider means direct P2P streams. Choosing a provider without a key
+    is an error rather than a silent fallback to P2P.
+    """
+
+    if "provider" not in form:
+        for field in _LEGACY_KEY_FIELDS:
+            key = (form.get(field) or "").strip()
+            if key:
+                return field.removesuffix("_key"), key, None
+
+        return P2P_PROVIDER, None, None
+
+    provider = (form.get("provider") or "").strip().lower()
+    api_key = (form.get("api_key") or "").strip()
+
+    if provider in ("", P2P_PROVIDER):
+        return P2P_PROVIDER, None, None
+
+    if provider not in _PROVIDER_LABELS:
+        return provider, None, "Unknown debrid provider."
+
+    if not api_key:
+        return (
+            provider,
+            None,
+            f"Enter your {_PROVIDER_LABELS[provider]} API key, "
+            "or choose \"None (direct P2P)\".",
+        )
+
+    return provider, api_key, None
+
+
+def _render_settings(
+    request: Request,
+    prefs,
+    *,
+    manifest: str | None = None,
+    error: str | None = None,
+    provider: str = "",
+    status_code: int = 200,
+) -> Response:
+    response = templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "prefs": prefs,
+            "settings": get_settings(),
+            "manifest": manifest,
+            "stremio_install_url": (
+                "stremio://" + manifest.split("://", 1)[-1] if manifest else None
+            ),
+            "error": error,
+            "providers": DEBRID_PROVIDERS,
+            "selected_provider": provider,
+        },
+        status_code=status_code,
+    )
+
+    # The page may contain a manifest URL, which grants use of the owner's
+    # debrid account: keep it out of shared caches and the back/forward cache.
+    response.headers["Cache-Control"] = "no-store"
+
+    return response
 
 
 # =========================================================
@@ -132,21 +225,9 @@ async def config_manifest(config_id: str):
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
 
-    prefs = load_preferences()
-    settings = get_settings()
-
-    manifest = request.query_params.get(
-        "manifest"
-    )
-
-    return templates.TemplateResponse(
-        "settings.html",
-        {
-            "request": request,
-            "prefs": prefs,
-            "settings": settings,
-            "manifest": manifest,
-        },
+    return _render_settings(
+        request,
+        load_preferences(),
     )
 
 
@@ -263,21 +344,10 @@ async def update_settings(request: Request):
 # CONFIGURE PAGE
 # =========================================================
 
-@router.get(
-    "/configure",
-    response_class=HTMLResponse,
-)
-async def configure(request: Request):
-
-    settings = get_settings()
-
-    return templates.TemplateResponse(
-        "config.html",
-        {
-            "request": request,
-            "settings": settings,
-        },
-    )
+@router.get("/configure")
+async def configure():
+    # Stremio's "Configure" button opens <addon>/configure.
+    return RedirectResponse("/", status_code=307)
 
 
 # =========================================================
@@ -295,6 +365,8 @@ async def generate_manifest(
         form
     )
 
+    provider, api_key, error = _resolve_debrid_choice(form)
+
     config = {
 
         # -------------------------------------------------
@@ -302,42 +374,10 @@ async def generate_manifest(
         # -------------------------------------------------
 
         "provider":
-            (
-                "torrin"
-                if form.get("torrin_key")
-                else
-                "torbox"
-                if form.get("torbox_key")
-                else
-                "realdebrid"
-                if form.get("realdebrid_key")
-                else
-                "alldebrid"
-                if form.get("alldebrid_key")
-                else
-                "premiumize"
-                if form.get("premiumize_key")
-                else
-                "offcloud"
-                if form.get("offcloud_key")
-                else
-                "premiumize"
-            ),
+            provider,
 
         "api_key":
-            (
-                form.get("torrin_key")
-                or
-                form.get("torbox_key")
-                or
-                form.get("realdebrid_key")
-                or
-                form.get("alldebrid_key")
-                or
-                form.get("premiumize_key")
-                or
-                form.get("offcloud_key")
-            ),
+            api_key,
 
         # -------------------------------------------------
         # BASIC
@@ -494,6 +534,16 @@ async def generate_manifest(
             ),
     }
 
+    if error:
+        # Re-show the form with the user's selections, minus any key.
+        return _render_settings(
+            request,
+            {**config, "api_key": None},
+            error=error,
+            provider=provider,
+            status_code=400,
+        )
+
     config_id = save_config(
         config
     )
@@ -515,7 +565,11 @@ async def generate_manifest(
         f"{scheme}://{host}/{config_id}/manifest.json"
     )
 
-    return RedirectResponse(
-        f"/?manifest={manifest_url}",
-        status_code=303,
+    # Rendered directly (not redirected to /?manifest=...) so the manifest
+    # URL, which works like a password, stays out of browser history.
+    return _render_settings(
+        request,
+        config,
+        manifest=manifest_url,
+        provider=provider,
     )
