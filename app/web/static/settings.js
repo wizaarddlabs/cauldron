@@ -38,24 +38,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // Provider: the API key field only matters when a debrid service is chosen.
-  const providerSelect = document.querySelector('[data-provider-select]');
-  const keyField = document.querySelector('[data-api-key-field]');
-  const p2pHelp = document.querySelector('[data-p2p-help]');
-  if (providerSelect && keyField) {
-    const updateProvider = function () {
-      const isP2P = providerSelect.value === 'p2p';
-      keyField.hidden = isP2P;
-      if (p2pHelp) p2pHelp.hidden = !isP2P;
-    };
-    providerSelect.addEventListener('change', function () {
-      updateProvider();
-      if (providerSelect.value !== 'p2p') {
-        keyField.querySelector('input').focus();
-      }
-    });
-    updateProvider();
-  }
+  initProviderRows();
 
   const form = document.querySelector('form[action="/generate"]');
   if (form) {
@@ -66,11 +49,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (field) field.focus();
       };
 
-      if (providerSelect && providerSelect.value !== 'p2p') {
-        const key = form.querySelector('input[name="api_key"]');
-        if (key && !key.value.trim()) {
-          const name = providerSelect.options[providerSelect.selectedIndex].text;
-          return fail(`Enter your ${name} API key, or choose None (direct P2P).`, key);
+      for (const row of document.querySelectorAll('[data-provider-row]')) {
+        const select = row.querySelector('[data-provider-select]');
+        const key = row.querySelector('input[name="api_key"]');
+        if (select.value !== 'p2p' && !key.value.trim()) {
+          const name = select.options[select.selectedIndex].text;
+          return fail(`Enter your ${name} API key, or remove that provider.`, key);
         }
       }
 
@@ -96,6 +80,87 @@ document.addEventListener('DOMContentLoaded', function () {
 
   initSortableList();
 });
+
+// Debrid provider rows: first row may be P2P; more rows add backup providers
+// in priority order. Each provider can be chosen once.
+function initProviderRows() {
+  const list = document.querySelector('[data-provider-list]');
+  const template = document.getElementById('providerRowTemplate');
+  const addButton = document.querySelector('[data-add-provider]');
+  const p2pHelp = document.querySelector('[data-p2p-help]');
+  const streamMode = document.querySelector('[data-stream-mode]');
+  if (!list || !template || !addButton) return;
+
+  const rows = () => Array.from(list.querySelectorAll('[data-provider-row]'));
+  const providerCount = template.content.querySelectorAll('option').length;
+
+  const refresh = function () {
+    const all = rows();
+    const firstIsP2P = all[0].querySelector('[data-provider-select]').value === 'p2p';
+
+    // Switching the first row back to P2P drops the backup providers,
+    // which the server would otherwise still use.
+    if (firstIsP2P) all.slice(1).forEach(row => row.remove());
+
+    const current = rows();
+    const chosen = current.map(row => row.querySelector('[data-provider-select]').value);
+
+    current.forEach(function (row, index) {
+      const n = index + 1;
+      const select = row.querySelector('[data-provider-select]');
+      const keyField = row.querySelector('[data-api-key-field]');
+      const keyInput = keyField.querySelector('input');
+      const title = row.querySelector('[data-provider-title]');
+
+      select.id = `provider_${n}`;
+      title.htmlFor = select.id;
+      title.textContent = current.length === 1 ? 'Provider' : `Provider ${n}`;
+      keyInput.id = `api_key_${n}`;
+      keyField.querySelector('label').htmlFor = keyInput.id;
+      keyField.hidden = select.value === 'p2p';
+      row.querySelector('[data-remove-provider]').hidden = index === 0;
+
+      // Each provider once: grey out ones picked in other rows.
+      Array.from(select.options).forEach(function (option) {
+        option.disabled = option.value !== 'p2p'
+          && option.value !== select.value
+          && chosen.includes(option.value);
+      });
+    });
+
+    addButton.hidden = firstIsP2P || current.length >= providerCount;
+    if (p2pHelp) p2pHelp.hidden = !firstIsP2P;
+    if (streamMode) streamMode.hidden = current.length < 2;
+  };
+
+  list.addEventListener('change', function (ev) {
+    if (!ev.target.matches('[data-provider-select]')) return;
+    refresh();
+    const keyField = ev.target.closest('[data-provider-row]').querySelector('[data-api-key-field]');
+    if (!keyField.hidden) keyField.querySelector('input').focus();
+  });
+
+  list.addEventListener('click', function (ev) {
+    const button = ev.target.closest('[data-remove-provider]');
+    if (!button) return;
+    button.closest('[data-provider-row]').remove();
+    refresh();
+    addButton.focus();
+  });
+
+  addButton.addEventListener('click', function () {
+    const chosen = rows().map(row => row.querySelector('[data-provider-select]').value);
+    const row = template.content.firstElementChild.cloneNode(true);
+    const select = row.querySelector('[data-provider-select]');
+    const unused = Array.from(select.options).find(option => !chosen.includes(option.value));
+    if (unused) select.value = unused.value;
+    list.appendChild(row);
+    refresh();
+    select.focus();
+  });
+
+  refresh();
+}
 
 function initSortableList() {
   const sortableList = document.getElementById('sortCriteria');

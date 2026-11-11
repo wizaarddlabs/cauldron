@@ -122,9 +122,58 @@ a:focus-visible,
   gap: 0 12px;
 }
 
-.api-key-field[hidden],
-[data-p2p-help][hidden] {
-  display: none;
+/* Elements styled with display:flex/grid would otherwise ignore [hidden]. */
+[hidden] {
+  display: none !important;
+}
+
+/* ---------- Debrid provider rows ---------- */
+
+.provider-intro {
+  margin: 0 0 4px;
+}
+
+.provider-row + .provider-row {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.provider-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  margin-top: 6px;
+}
+
+.provider-row-head label {
+  margin-top: 0;
+}
+
+.remove-provider {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.remove-provider:hover {
+  color: var(--danger);
+}
+
+button.add-provider {
+  margin-top: 14px;
+}
+
+.stream-mode label {
+  margin-top: 16px;
 }
 
 .form-error {
