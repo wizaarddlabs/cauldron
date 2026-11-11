@@ -25,12 +25,19 @@ def build_stream(
     has_debrid: bool,
     base_url: str,
     config: str,
+    provider: str | None = None,
+    provider_label: str | None = None,
 ) -> dict | None:
     """
     Build one Stremio stream entry, or ``None`` if the torrent is unusable.
 
     With a debrid provider the stream points at Cauldron's playback
     endpoint; otherwise it is a plain P2P infoHash stream.
+
+    ``provider`` routes playback through that specific provider (configs
+    with several providers); ``cache_status_map`` must then be that
+    provider's map. ``provider_label`` adds the provider's name to the
+    stream so users can tell them apart.
     """
 
     info_hash = str(
@@ -110,6 +117,11 @@ def build_stream(
         )
 
     if has_debrid:
+        if provider_label:
+            name_parts.append(
+                provider_label
+            )
+
         name_parts.append(
             cache_label
         )
@@ -181,6 +193,7 @@ def build_stream(
     if has_debrid:
         title_parts.append(
             f"Cache: {cache_label}"
+            + (f" ({provider_label})" if provider_label else "")
         )
 
     # -------------------------------------------------
@@ -189,9 +202,9 @@ def build_stream(
 
     if has_debrid:
         stream_url = (
-            f"{base_url}/"
-            f"{config}/playback/"
-            f"{info_hash}"
+            f"{base_url}/{config}/playback/{provider}/{info_hash}"
+            if provider
+            else f"{base_url}/{config}/playback/{info_hash}"
         )
 
         stream_data = {
@@ -201,8 +214,10 @@ def build_stream(
             ),
             "url": stream_url,
             "behaviorHints": {
+                # Per provider, so Stremio's "next episode" keeps using the
+                # same debrid service.
                 "bingeGroup": (
-                    "cauldron"
+                    f"cauldron-{provider}" if provider else "cauldron"
                 ),
             },
         }
