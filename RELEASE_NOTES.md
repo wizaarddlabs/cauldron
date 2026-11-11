@@ -1,3 +1,15 @@
+# Cauldron v0.7.1
+
+## Fixed
+
+- "Add another provider" did nothing for anyone who had opened the setup page
+  before upgrading. v0.7.0 still loaded `settings.js?v=6`, the same URL as
+  v0.6.0, so browsers kept running their cached v0.6.0 script, which has no
+  code for that button. Static files (script, stylesheet, logo) are now linked
+  with a hash of their contents, so every change gets a new URL automatically.
+
+---
+
 # Cauldron v0.7.0
 
 ## New
