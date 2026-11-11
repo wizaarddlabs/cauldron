@@ -18,7 +18,8 @@
 - CI now runs `ruff` and `pytest`, and image publishing waits for them.
 - Test/lint dependencies moved to `requirements-dev.txt`.
 - `docker-compose.yml` is portable; host-specific settings go in a gitignored
-  `docker-compose.override.yml` (see `DEPLOYMENT.md` before upgrading a server).
+  `docker-compose.override.yml`. Existing servers: run
+  `./scripts/upgrade-vps.sh` after pulling (see `DEPLOYMENT.md`).
 
 ---
 

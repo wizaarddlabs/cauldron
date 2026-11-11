@@ -61,8 +61,17 @@ rebuild.
 
 ### Upgrading an existing deployment
 
-Before pulling this version on a server that used the old all-in-one compose
-file:
+On a server that used the old all-in-one compose file, run the upgrade script
+right after pulling. It performs the steps below, never overwrites existing
+settings, and is safe to re-run:
+
+```bash
+git pull
+./scripts/upgrade-vps.sh            # add --dry-run to skip the restart
+```
+
+It recovers the previous `ADDON_URL` from git history (or pass it as an
+argument). The manual equivalent is:
 
 1. Create `docker-compose.override.yml` as above (adjust port/network).
 2. Make sure `.env` sets `ADDON_URL` (and `ADMIN_API_KEY` if you use shared
