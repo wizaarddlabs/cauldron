@@ -347,7 +347,10 @@ Open your Cauldron instance in a browser and fill in the setup page:
 
 1. Choose a **debrid provider** and paste its API key, or leave it on
    **None (direct P2P streams)** to stream torrents directly without a debrid
-   service.
+   service. Use **Add another provider** to add backups, highest priority
+   first: Cauldron checks every provider's cache and streams each torrent
+   through the first one that has it cached (or, if you prefer, lists a
+   stream for each provider).
 2. Adjust resolutions, languages and the other filters.
 3. Tap **Create addon**, then **Install in Stremio** to open the Stremio app,
    or copy the addon URL into **Add addon → Add addon via URL**.
@@ -364,6 +367,10 @@ docker compose exec app python scripts/make_config.py realdebrid YOUR_API_KEY
 
 ```bash
 docker compose exec app python scripts/make_config.py p2p
+```
+
+```bash
+docker compose exec app python scripts/make_config.py realdebrid KEY1 torbox KEY2
 ```
 
 ---
