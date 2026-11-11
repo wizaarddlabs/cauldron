@@ -17,6 +17,8 @@ from typing import Optional
 
 import httpx
 
+from app.http_client import HttpSession, http_session
+
 from app.config import get_settings
 from app.debrid.base import DebridClient
 from app.models import CacheStatus, DebridProvider, ResolveResponse
@@ -54,7 +56,7 @@ class OffcloudClient(DebridClient):
     async def _fetch_file_size(
         self,
         url: str,
-        client: httpx.AsyncClient,
+        client: "HttpSession",
         semaphore: asyncio.Semaphore,
     ) -> int:
         """
@@ -108,7 +110,7 @@ class OffcloudClient(DebridClient):
         result = {}
 
         # Offcloud accepts hashes as a JSON array in POST data
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_session(timeout=30) as client:
             try:
                 resp = await client.post(
                     url,
@@ -146,7 +148,7 @@ class OffcloudClient(DebridClient):
         """
         url = self._url("cloud")
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_session(timeout=30) as client:
             resp = await client.post(
                 url,
                 data={
@@ -170,7 +172,7 @@ class OffcloudClient(DebridClient):
         # According to Offcloud API docs, explore is a GET request with requestId in URL path.
         url = self._explore_url(torrent_id)
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_session(timeout=30) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
@@ -181,7 +183,7 @@ class OffcloudClient(DebridClient):
             file_urls = [file_url for file_url in data if isinstance(file_url, str)]
             semaphore = asyncio.Semaphore(8)
 
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with http_session(timeout=10) as client:
                 sizes = await asyncio.gather(
                     *(
                         self._fetch_file_size(
@@ -248,7 +250,7 @@ class OffcloudClient(DebridClient):
                 # Fetch a direct download link for the chosen file.
                 url = self._download_url(torrent_id, chosen["id"])
 
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with http_session(timeout=30) as client:
                     resp = await client.get(url)
                     resp.raise_for_status()
                     data = resp.json()

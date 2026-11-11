@@ -1,3 +1,4 @@
+
 """
 Public torrent site scrapers - no external services required.
 
@@ -10,6 +11,7 @@ Sources:
 - EZTV (API) - TV-focused
 """
 
+import logging
 import re
 import asyncio
 import time
@@ -17,10 +19,14 @@ from urllib.parse import quote
 from typing import Any
 
 import httpx
+
+from app.http_client import http_session
 from bs4 import BeautifulSoup
 
 from app.config import get_settings
 from app.models import TorrentResult
+
+logger = logging.getLogger(__name__)
 from app.scrapers.base import Scraper
 
 settings = get_settings()
@@ -185,7 +191,7 @@ class PublicScraper(Scraper):
             params["Episode"] = episode
 
         try:
-            async with httpx.AsyncClient(
+            async with http_session(
                 timeout=self.timeout
             ) as client:
                 response = await client.get(
@@ -267,9 +273,8 @@ class PublicScraper(Scraper):
             return results
 
         except (httpx.HTTPError, ValueError) as exc:
-            print(
-                f"Zilean search failed: {exc}",
-                flush=True,
+            logger.warning(
+                f"Zilean search failed: {exc}"
             )
 
             return []
@@ -310,7 +315,7 @@ class PublicScraper(Scraper):
         }
 
         try:
-            async with httpx.AsyncClient(
+            async with http_session(
                 timeout=self.timeout,
                 follow_redirects=True,
             ) as client:
@@ -391,9 +396,8 @@ class PublicScraper(Scraper):
             return results
 
         except (httpx.HTTPError, ValueError) as exc:
-            print(
-                f"Bitsearch search failed: {exc}",
-                flush=True,
+            logger.warning(
+                f"Bitsearch search failed: {exc}"
             )
 
             return []
@@ -407,7 +411,7 @@ class PublicScraper(Scraper):
         results = []
 
         try:
-            async with httpx.AsyncClient(
+            async with http_session(
                 timeout=self.timeout
             ) as client:
 
@@ -504,7 +508,7 @@ class PublicScraper(Scraper):
         results = []
 
         try:
-            async with httpx.AsyncClient(
+            async with http_session(
                 timeout=self.timeout,
                 headers={
                     "User-Agent": "Mozilla/5.0"
@@ -627,7 +631,7 @@ class PublicScraper(Scraper):
         results = []
 
         try:
-            async with httpx.AsyncClient(
+            async with http_session(
                 timeout=self.timeout
             ) as client:
 
@@ -736,24 +740,22 @@ class PublicScraper(Scraper):
         queries: list[str],
     ) -> list[TorrentResult]:
 
-        print(
-            "Starting Nyaa search...",
-            flush=True,
+        logger.debug(
+            "Starting Nyaa search..."
         )
 
         results = []
 
         try:
-            async with httpx.AsyncClient(
+            async with http_session(
                 timeout=self.timeout
             ) as client:
 
                 for query in queries[:3]:
 
                     try:
-                        print(
-                            f"Nyaa searching for: {query}",
-                            flush=True,
+                        logger.debug(
+                            f"Nyaa searching for: {query}"
                         )
 
                         url = (
@@ -771,10 +773,9 @@ class PublicScraper(Scraper):
                             headers=headers,
                         )
 
-                        print(
+                        logger.debug(
                             f"Nyaa response status: "
-                            f"{resp.status_code}",
-                            flush=True,
+                            f"{resp.status_code}"
                         )
 
                         if resp.status_code != 200:
@@ -789,9 +790,8 @@ class PublicScraper(Scraper):
                             "tbody tr"
                         )
 
-                        print(
-                            f"Nyaa found {len(rows)} rows",
-                            flush=True,
+                        logger.debug(
+                            f"Nyaa found {len(rows)} rows"
                         )
 
                         for row in rows[1:]:
@@ -958,7 +958,7 @@ class PublicScraper(Scraper):
         results = []
 
         try:
-            async with httpx.AsyncClient(
+            async with http_session(
                 timeout=self.timeout
             ) as client:
 

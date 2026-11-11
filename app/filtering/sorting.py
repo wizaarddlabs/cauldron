@@ -18,9 +18,13 @@ means:
 The order of sort_criteria determines priority.
 """
 
+import logging
 from typing import List
 
+
 from app.models import TorrentResult
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------
@@ -431,37 +435,35 @@ def sort_torrents(
     # DEBUG
     # -----------------------------------------------------
 
-    print(
-        "SORT CRITERIA:",
+    logger.debug(
+        "Sort criteria: %s | order: %s",
         criteria,
-        "| ORDER:",
         "DESC" if reverse else "ASC",
-        flush=True,
     )
 
-    for index, torrent in enumerate(
-        sorted_results[:20],
-        start=1,
-    ):
-        values = tuple(
-            _sort_value(
-                torrent,
-                criterion,
-                cache_status_map,
+    if logger.isEnabledFor(logging.DEBUG):
+        for index, torrent in enumerate(
+            sorted_results[:20],
+            start=1,
+        ):
+            values = tuple(
+                _sort_value(
+                    torrent,
+                    criterion,
+                    cache_status_map,
+                )
+                for criterion in criteria
             )
-            for criterion in criteria
-        )
 
-        print(
-            f"SORT #{index:02d}: "
-            f"{values} | "
-            f"cached={_cache_rank(torrent, cache_status_map)} | "
-            f"resolution={_resolution_score(torrent)} | "
-            f"seeders={getattr(torrent, 'seeders', 0) or 0} | "
-            f"quality={_quality_score(torrent)} | "
-            f"title={torrent.title}",
-            flush=True,
-        )
+            logger.debug(
+                f"SORT #{index:02d}: "
+                f"{values} | "
+                f"cached={_cache_rank(torrent, cache_status_map)} | "
+                f"resolution={_resolution_score(torrent)} | "
+                f"seeders={getattr(torrent, 'seeders', 0) or 0} | "
+                f"quality={_quality_score(torrent)} | "
+                f"title={torrent.title}"
+            )
 
     return sorted_results
 

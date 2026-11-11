@@ -19,7 +19,7 @@ and resolving playback links.
 import logging
 from typing import Optional
 
-import httpx
+from app.http_client import http_session
 
 from app.config import get_settings
 from app.debrid.base import DebridClient
@@ -74,7 +74,7 @@ class TorrinClient(DebridClient):
             f"{'/'.join(normalized_hashes)}"
         )
 
-        async with httpx.AsyncClient(
+        async with http_session(
             timeout=self._timeout
         ) as client:
 
@@ -225,7 +225,7 @@ class TorrinClient(DebridClient):
 
         url = f"{self._base}/rest/1.0/torrents"
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with http_session(timeout=self._timeout) as client:
             response = await client.get(url, headers=self._headers)
             response.raise_for_status()
             data = response.json()
@@ -278,7 +278,7 @@ class TorrinClient(DebridClient):
 
         url = f"{self._base}/rest/1.0/torrents/addMagnet"
 
-        async with httpx.AsyncClient(
+        async with http_session(
             timeout=self._timeout
         ) as client:
 
@@ -306,7 +306,7 @@ class TorrinClient(DebridClient):
 
         url = f"{self._base}/rest/1.0/torrents/info/{torrent_id}"
 
-        async with httpx.AsyncClient(
+        async with http_session(
             timeout=self._timeout
         ) as client:
 
@@ -336,7 +336,7 @@ class TorrinClient(DebridClient):
 
         info_url = f"{self._base}/rest/1.0/torrents/info/{torrent_id}"
 
-        async with httpx.AsyncClient(
+        async with http_session(
             timeout=self._timeout
         ) as client:
 
@@ -375,7 +375,7 @@ class TorrinClient(DebridClient):
 
         unrestrict_url = f"{self._base}/rest/1.0/unrestrict/link"
 
-        async with httpx.AsyncClient(
+        async with http_session(
             timeout=self._timeout
         ) as client:
 

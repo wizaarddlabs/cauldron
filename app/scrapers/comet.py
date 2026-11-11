@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from urllib.parse import quote, unquote
 
-import httpx
+from app.http_client import http_session
 
 from app.config import get_settings
 from app.models import TorrentResult
@@ -105,7 +105,7 @@ class CometScraper(Scraper):
             )
 
         try:
-            async with httpx.AsyncClient(
+            async with http_session(
                 timeout=self.timeout,
                 follow_redirects=True,
                 headers={

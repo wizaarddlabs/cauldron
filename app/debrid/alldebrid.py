@@ -1,14 +1,19 @@
+
 """
 AllDebrid API client.
 Docs: https://docs.alldebrid.com/
 """
+import logging
 from typing import Optional
 
-import httpx
+from app.http_client import http_session
 
 from app.config import get_settings
 from app.debrid.base import DebridClient
+
 from app.models import CacheStatus, ResolveResponse
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 AGENT = "cauldron"
@@ -32,7 +37,7 @@ class AllDebridClient(DebridClient):
     async def add_magnet(self, magnet: str) -> str:
         # Use v4.1 magnet/upload endpoint
         url = f"{self._base}/magnet/upload"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.get(url, params={**self._params, "magnets[]": [magnet]}, headers=self._headers)
             resp.raise_for_status()
             data = resp.json()
@@ -42,7 +47,7 @@ class AllDebridClient(DebridClient):
     async def list_files(self, torrent_id: str) -> list[dict]:
         # Use v4.1 magnet/status endpoint (v4/magnet/status is deprecated)
         url = f"{self._base}/magnet/status"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.get(url, params={**self._params, "id": torrent_id}, headers=self._headers)
             resp.raise_for_status()
             data = resp.json()
@@ -151,7 +156,7 @@ class AllDebridClient(DebridClient):
             if not link:
                 raise RuntimeError("No download link available for this file")
 
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with http_session(timeout=15) as client:
                 resp = await client.get(
                     f"{self._base}/link/unlock", params={**self._params, "link": link}, headers=self._headers
                 )
@@ -164,5 +169,5 @@ class AllDebridClient(DebridClient):
                 provider="alldebrid",
             )
         except Exception as e:
-            print(f"Error getting AllDebrid playback link: {e}, torrent may not be ready", flush=True)
+            logger.warning(f"Error getting AllDebrid playback link: {e}, torrent may not be ready")
             raise

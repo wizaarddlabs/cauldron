@@ -7,6 +7,8 @@ from typing import Optional
 
 import httpx
 
+from app.http_client import http_session
+
 from app.config import get_settings
 from app.debrid.base import DebridClient
 from app.models import CacheStatus, ResolveResponse
@@ -27,7 +29,7 @@ class TorBoxClient(DebridClient):
         if not info_hashes:
             return {}
         url = f"{self._base}/torrents/checkcached"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             try:
                 resp = await client.get(
                     url,
@@ -57,7 +59,7 @@ class TorBoxClient(DebridClient):
 
     async def add_magnet(self, magnet: str) -> str:
         url = f"{self._base}/torrents/createtorrent"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.post(
                 url, headers=self._headers, data={"magnet": magnet, "seed": 1}
             )
@@ -67,7 +69,7 @@ class TorBoxClient(DebridClient):
 
     async def list_files(self, torrent_id: str) -> list[dict]:
         url = f"{self._base}/torrents/mylist"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.get(
                 url, headers=self._headers, params={"id": torrent_id, "bypass_cache": "true"}
             )
@@ -89,7 +91,7 @@ class TorBoxClient(DebridClient):
                 chosen = files[idx]
 
                 url = f"{self._base}/torrents/requestdl"
-                async with httpx.AsyncClient(timeout=15) as client:
+                async with http_session(timeout=15) as client:
                     resp = await client.get(
                         url,
                         headers=self._headers,
@@ -104,11 +106,11 @@ class TorBoxClient(DebridClient):
                     provider="torbox",
                 )
         except Exception as e:
-            print(f"Error getting existing files: {e}, trying direct request", flush=True)
+            logger.warning(f"Error getting existing files: {e}, trying direct request")
         
         # If torrent not in user list or error, request download and get playback link
         url = f"{self._base}/torrents/requestdl"
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with http_session(timeout=15) as client:
             resp = await client.get(
                 url,
                 headers=self._headers,
