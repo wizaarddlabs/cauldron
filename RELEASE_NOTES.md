@@ -1,3 +1,30 @@
+# Cauldron v0.7.0
+
+## New
+
+- **Several debrid providers in one addon.** Add backup providers on the setup
+  page, highest priority first. Every search checks all of their caches at the
+  same time, and each torrent is streamed through the first provider that has
+  it cached (or the first provider if none do). Streams name the provider they
+  use, e.g. `Cauldron • Real-Debrid • ⚡ Cached`.
+- Optional "Show a stream for each provider" mode lists every provider for
+  every torrent instead of only the best one. With "Cached only", providers
+  that don't have a torrent cached are left out.
+- Each provider's cache check has its own 12-second limit, so one slow or
+  failing provider no longer delays or breaks the whole stream list.
+- `scripts/make_config.py` accepts several providers:
+  `make_config.py realdebrid KEY1 torbox KEY2`.
+
+## Compatibility
+
+- Existing addons keep working unchanged. Their stream links now include the
+  provider (`/<id>/playback/<provider>/<hash>`); the old link format still
+  works and uses the addon's first provider.
+- New configs also store their first provider in the old single-provider
+  fields, so rolling back to v0.6.x keeps them working (with that provider only).
+
+---
+
 # Cauldron v0.6.0
 
 ## Improved
