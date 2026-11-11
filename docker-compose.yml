@@ -1,6 +1,12 @@
 services:
   app:
     container_name: cauldron
+    # Published by .github/workflows/publish-image.yml. Pin a release with
+    # CAULDRON_VERSION in .env (e.g. 0.5.0); update with
+    # `docker compose pull app && docker compose up -d`.
+    image: ghcr.io/wizaarddlabs/cauldron:${CAULDRON_VERSION:-latest}
+    # Fallback / development: `docker compose up -d --build` builds this
+    # checkout instead and tags it with the image name above.
     build: .
     ports:
       # Bound to localhost by default; put a reverse proxy in front, or set

@@ -9,7 +9,9 @@
 #   ./scripts/upgrade-vps.sh https://my.host # or pass it explicitly
 #   ./scripts/upgrade-vps.sh --dry-run       # change files, but don't restart
 #
-# Safe to run more than once: existing settings are never overwritten.
+# Safe to run more than once: existing settings are never overwritten. Re-run
+# it (or `docker compose pull app && docker compose up -d`) to update to the
+# latest published image.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -21,7 +23,7 @@ for arg in "$@"; do
 	case "$arg" in
 		--dry-run) DRY_RUN=true ;;
 		-h | --help)
-			sed -n '2,13p' "$0"
+			sed -n '2,15p' "$0"
 			exit 0
 			;;
 		*) ADDON_URL_ARG="$arg" ;;
@@ -31,10 +33,14 @@ done
 say() { printf '==> %s\n' "$*"; }
 
 # ---------------------------------------------------------------------------
-# 1. Host-specific compose override (port 8008, npm_default, live ./app mount)
+# 1. Host-specific compose override (port 8008, npm_default network)
 # ---------------------------------------------------------------------------
 if [ -f docker-compose.override.yml ]; then
 	say "docker-compose.override.yml already exists; leaving it alone"
+	if grep -q '\./app:/srv/app' docker-compose.override.yml; then
+		echo "WARNING: docker-compose.override.yml bind-mounts ./app over the image's code." >&2
+		echo "         Remove that volume line to run the published image as-is." >&2
+	fi
 else
 	cp docker-compose.override.example.yml docker-compose.override.yml
 	say "Created docker-compose.override.yml from the example"
@@ -103,12 +109,17 @@ docker compose config -q
 say "Compose configuration is valid"
 
 # ---------------------------------------------------------------------------
-# 4. Rebuild and restart
+# 4. Pull the published image and restart
 # ---------------------------------------------------------------------------
 if $DRY_RUN; then
-	say "Dry run: skipping 'docker compose up -d --build'"
+	say "Dry run: skipping 'docker compose pull app && docker compose up -d'"
 	exit 0
 fi
 
-docker compose up -d --build
+if docker compose pull app; then
+	docker compose up -d
+else
+	echo "WARNING: could not pull the Cauldron image; building from this checkout instead." >&2
+	docker compose up -d --build
+fi
 say "Done. Check: docker compose ps && curl -fsS http://127.0.0.1:8008/ready"
