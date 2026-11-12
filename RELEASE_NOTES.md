@@ -1,3 +1,45 @@
+# Cauldron v0.8.0
+
+Based on feedback from the r/StremioAddons announcement thread (including the ext.to request).
+
+## Improved
+
+- **Spanish/Latino and other localized releases are no longer thrown away.**
+  Such releases are often named in their own language ("El Padrino 1972
+  Latino" for The Godfather), and the strict title check only knew the
+  English title. Results now also match Cinemeta's alternate titles, and
+  sources that look up by IMDb ID (Comet, MediaFusion, Zilean, EZTV) may
+  return a localized name when the release has a non-English language tag
+  and the year (movies) or season/episode (series) matches.
+- **Language detection reads release tags, not title words.** Short codes no
+  longer match ordinary words: "El Camino" is not Greek, "Peter Pan" is not
+  Punjabi, "Ben-Hur" is not Bengali. A language counts when it appears as a
+  tag (after the year/resolution/episode, in brackets, in capitals, or next
+  to another language code).
+- **New language options: Unknown / no language tag, Dubbed**, pinned at the
+  top of each list with Multi-audio. Requiring "Unknown" alongside English
+  keeps the many untagged (usually English) releases that were dropped
+  before.
+- **Leechers** is now available as a sort option.
+- **New optional Prowlarr source.** Set `PROWLARR_URL` and `PROWLARR_API_KEY`
+  and Cauldron searches every indexer enabled in your Prowlarr, e.g. **EXT
+  (ext.to)** through Prowlarr's FlareSolverr proxy. `PROWLARR_INDEXER_IDS`
+  limits it to chosen indexers.
+- Accented titles match unaccented releases (Amélie / Amelie, Pokémon /
+  Pokemon).
+
+## Fixed
+
+- The English language filter treated "English" itself as a foreign tag.
+
+## Documentation
+
+- New **Privacy & Security** section in the README, linked from the setup
+  page: what is encrypted and redacted, and why self-hosting gives full
+  control over your keys.
+
+---
+
 # Cauldron v0.7.1
 
 ## Fixed

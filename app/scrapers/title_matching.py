@@ -5,7 +5,9 @@ movie or episode (title tokens, year, aliases, SxxEyy / season packs).
 
 import logging
 import re
+import unicodedata
 
+from app.filtering.matchers import NON_LANGUAGE_TAGS, detect_languages
 from app.models import TorrentResult
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,13 @@ def _normalize_title(value: str | None) -> str:
     if not value:
         return ""
 
+    # Fold accents so "Amélie" / "Pokémon" match "Amelie" / "Pokemon".
+    value = "".join(
+        char
+        for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
+
     value = value.lower()
 
     # Replace common release separators with spaces.
@@ -43,7 +52,7 @@ def _normalize_title(value: str | None) -> str:
     value = value.replace("&", " and ")
 
     # Normalize apostrophes.
-    value = value.replace("'", "")
+    value = value.replace("'", "").replace("\u2019", "")
 
     # Collapse whitespace.
     value = re.sub(r"\s+", " ", value)
@@ -557,12 +566,90 @@ def _title_matches_series(
 # ---------------------------------------------------------
 
 
+# Sources that look results up by IMDb ID, so a release they return is for
+# the requested item even when its name is a localized title.
+ID_BACKED_SOURCES = {"comet", "mediafusion", "zilean", "eztv"}
+
+_EPISODE_MARKER = re.compile(
+    r"\bs\d{1,2}e\d{1,3}\b|\b\d{1,2}x\d{2}\b|\bseason\b|\btemporada\b",
+    re.IGNORECASE,
+)
+
+_MAX_ALIASES = 10
+
+
+def _candidate_titles(query: str, aliases) -> list[str]:
+    """The requested title plus usable alternate titles, without repeats."""
+
+    titles = [query]
+
+    for alias in aliases or []:
+        if isinstance(alias, dict):
+            alias = alias.get("title") or alias.get("name")
+
+        if isinstance(alias, str) and alias.strip() and alias.strip() not in titles:
+            titles.append(alias.strip())
+
+        if len(titles) > _MAX_ALIASES:
+            break
+
+    return titles
+
+
+def _is_localized_release_of_request(
+    result: TorrentResult,
+    result_title: str,
+    media_type: str | None,
+    season: str | None,
+    episode: str | None,
+    year: int | None,
+) -> bool:
+    """
+    Accept a release whose name doesn't match the (English) title when it
+    is very likely a localized release of the requested item: it came from
+    an IMDb-ID-backed source, carries a non-English language tag, and its
+    year (movies) or season/episode (series) matches.
+
+    Latino/Spanish releases, for example, are usually named in Spanish:
+    "El Padrino 1972 1080p Latino" for The Godfather. Requiring a language
+    tag keeps the cases the strict check exists for rejected, e.g. an
+    English "Monarch Legacy of Monsters S01E01" returned for "Monster".
+    """
+
+    if getattr(result, "source", "") not in ID_BACKED_SOURCES:
+        return False
+
+    languages = detect_languages(result_title) - NON_LANGUAGE_TAGS - {"english"}
+    if not languages:
+        return False
+
+    if media_type == "movie":
+        if not year or _EPISODE_MARKER.search(result_title):
+            return False
+
+        release_year = _extract_year(result_title)
+        # Release years are sometimes off by one from the catalogue year.
+        return release_year is not None and abs(release_year - year) <= 1
+
+    if media_type == "series":
+        return (
+            season is not None
+            and episode is not None
+            and _episode_matches(result_title, season, episode)
+        )
+
+    return False
+
+
 def result_matches_request(
     result: TorrentResult,
     query: str,
     media_type: str | None,
     season: str | None,
     episode: str | None,
+    *,
+    aliases=None,
+    year: int | None = None,
 ) -> bool:
     """
     Final safety filter applied after every scraper returns.
@@ -585,8 +672,9 @@ def result_matches_request(
             -> Monarch Legacy of Monsters S01E01
             -> REJECT
 
-    Every scraper therefore passes through the same final
-    validation layer.
+    The title may match the requested title or any of its ``aliases``
+    (alternate titles from Cinemeta). Localized releases from ID-backed
+    sources get one narrow exception: see _is_localized_release_of_request.
     """
 
     result_title = str(
@@ -596,15 +684,23 @@ def result_matches_request(
     if not result_title:
         return False
 
+    titles = _candidate_titles(query, aliases)
+
     # -----------------------------------------------------
     # SERIES
     # -----------------------------------------------------
 
     if media_type == "series":
-        if not _title_matches_series(
-            query,
-            result_title,
+        if not any(
+            _title_matches_series(title, result_title)
+            for title in titles
         ):
+            if _is_localized_release_of_request(
+                result, result_title, media_type, season, episode, year
+            ):
+                logger.debug("LOCALIZED ACCEPT [series]: %r", result_title)
+                return True
+
             logger.debug(
                 "TITLE FILTER REJECT [series]: %r -> %r",
                 query,
@@ -632,13 +728,20 @@ def result_matches_request(
     # -----------------------------------------------------
 
     if media_type == "movie":
-        requested_year = _extract_year(query)
-
-        if not _title_matches_movie(
-            query,
-            result_title,
-            requested_year=requested_year,
+        if not any(
+            _title_matches_movie(
+                title,
+                result_title,
+                requested_year=_extract_year(title),
+            )
+            for title in titles
         ):
+            if _is_localized_release_of_request(
+                result, result_title, media_type, season, episode, year
+            ):
+                logger.debug("LOCALIZED ACCEPT [movie]: %r", result_title)
+                return True
+
             logger.debug(
                 "TITLE FILTER REJECT [movie]: %r -> %r",
                 query,

@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     zilean_enabled: bool = False
     zilean_url: str = "http://zilean:8181"
     zilean_max_results: int = 100
+    # Prowlarr (optional): searches every indexer enabled there, e.g. EXT /
+    # ext.to via Prowlarr's FlareSolverr proxy. Disabled unless URL and key
+    # are both set.
+    prowlarr_url: str | None = None
+    prowlarr_api_key: str | None = None
+    # Comma-separated Prowlarr indexer IDs to search; empty searches all.
+    prowlarr_indexer_ids: str = ""
+    prowlarr_timeout_seconds: int = 15
 
     # --- CORS ---
     # Read as a plain string: pydantic-settings JSON-decodes list-typed env

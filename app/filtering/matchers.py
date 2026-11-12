@@ -241,6 +241,16 @@ LANGUAGE_PATTERNS = {
         r"\bvie\b",
     ],
 
+    "dubbed": [
+        r"\bdubbed\b",
+        r"\bdub\b",
+        r"\bdubs\b",
+        r"\bdoblad[oa]\b",
+        r"\bdoblaje\b",
+        r"\bdublad[oa]\b",
+        r"\bdublagem\b",
+    ],
+
     "multi": [
         r"\bmulti\b",
         r"\bdual\b",
@@ -249,11 +259,120 @@ LANGUAGE_PATTERNS = {
 }
 
 
+# Not languages in themselves: a release can be multi-audio or dubbed into
+# any language.
+NON_LANGUAGE_TAGS = {"multi", "dubbed"}
+
+# Pseudo-language for releases that carry no language tag at all.
+UNKNOWN_LANGUAGE = "unknown"
+
 FOREIGN_LANGUAGE_PATTERNS = []
 
 for lang, patterns in LANGUAGE_PATTERNS.items():
-    if lang != "multi":  # Exclude multi from foreign language patterns
+    if lang not in NON_LANGUAGE_TAGS and lang != "english":
         FOREIGN_LANGUAGE_PATTERNS.extend(patterns)
+
+
+# ---------------------------------------------------------
+# LANGUAGE TAG DETECTION
+# ---------------------------------------------------------
+#
+# Language codes are short ("el", "por", "pan", "ben", "lat") and collide
+# with ordinary title words: "El Camino" is not Greek and "Peter Pan" is not
+# Punjabi. A word only counts as a language tag when it is where release
+# names put tags:
+#
+#   * after the first year / resolution / episode / source marker
+#       Movie.2024.SPA.LAT.1080p     Show S01E02 [ITA]
+#   * inside brackets or parentheses          Pelicula [Latino] 1080p
+#   * written in capitals (unless the whole title is in capitals)
+#       Movie ITA 1080p
+#   * next to another language code            Movie.Ita.Eng.1080p
+
+_TAG_BOUNDARY = re.compile(
+    r"\b(?:19\d{2}|20\d{2}|\d{3,4}p|4k|uhd|s\d{1,2}(?:e\d{1,3})?|"
+    r"\d{1,2}x\d{2}|season|temporada|complete|web(?:-?dl|rip)?|bluray|blu-ray|"
+    r"bdrip|brrip|hdtv|hdrip|dvdrip|remux)\b",
+    re.IGNORECASE,
+)
+
+_BRACKETED = re.compile(r"[\[(]([^\])]*)[\])]")
+
+_WORD = re.compile(r"[^\W_]+")
+
+# Every plain word that appears in a language pattern, e.g. "spa", "latino".
+_LANGUAGE_WORDS = {
+    word
+    for patterns in LANGUAGE_PATTERNS.values()
+    for pattern in patterns
+    for word in [pattern.replace("\\b", "")]
+    if _WORD.fullmatch(word)
+}
+
+
+def language_tag_text(title: str) -> str:
+    """
+    The parts of a release name that may carry language tags, lowercased.
+    """
+
+    if not title:
+        return ""
+
+    marker = _TAG_BOUNDARY.search(title)
+    head = title[: marker.start()] if marker else title
+    tail = title[marker.start():] if marker else ""
+
+    # Without any marker we can't tell title words from tags; fall back to
+    # the strict per-word rules below for the whole name.
+    parts = [tail] + _BRACKETED.findall(head)
+
+    head_words = _WORD.findall(_BRACKETED.sub(" ", head))
+    letters = [c for c in head if c.isalpha()]
+    head_all_caps = bool(letters) and all(c.isupper() for c in letters)
+
+    for index, word in enumerate(head_words):
+        lower = word.lower()
+
+        if lower not in _LANGUAGE_WORDS:
+            continue
+
+        neighbours = {
+            head_words[i].lower()
+            for i in (index - 1, index + 1)
+            if 0 <= i < len(head_words)
+        }
+
+        if (
+            (len(word) >= 2 and word.isupper() and not head_all_caps)
+            or neighbours & _LANGUAGE_WORDS
+        ):
+            parts.append(word)
+
+    return " ".join(parts).lower()
+
+
+def detect_languages(title: str) -> set[str]:
+    """Language keys (and "multi" / "dubbed") tagged on a release name."""
+
+    text = language_tag_text(title)
+
+    return {
+        lang
+        for lang, patterns in LANGUAGE_PATTERNS.items()
+        if _match_patterns(text, patterns)
+    }
+
+
+def _has_no_language_tag(detected: set[str]) -> bool:
+    return not (detected - {"dubbed"})
+
+
+def _matches_any(detected: set[str], languages: list[str]) -> bool:
+    wanted = {lang.lower() for lang in languages}
+
+    return bool(detected & wanted) or (
+        UNKNOWN_LANGUAGE in wanted and _has_no_language_tag(detected)
+    )
 
 
 
@@ -297,47 +416,22 @@ def matches_language(
     title: str,
     allowed: list[str],
 ) -> bool:
-
     """
     Language filtering.
 
-    English is assumed unless a foreign language
-    is explicitly detected.
+    English is assumed unless a foreign language is explicitly tagged.
     """
 
     if not allowed:
         return True
 
+    detected = detect_languages(title)
 
-    title_lower = title.lower()
+    if "english" in [x.lower() for x in allowed]:
+        return not (detected - NON_LANGUAGE_TAGS - {"english"})
 
-
-    # English is default
-    if "english" in [
-        x.lower()
-        for x in allowed
-    ]:
-
-        return not _match_patterns(title_lower, FOREIGN_LANGUAGE_PATTERNS)
-
-
-
-    # Other languages require explicit match
-
-    for lang in allowed:
-
-        patterns = LANGUAGE_PATTERNS.get(
-            lang.lower()
-        )
-
-        if patterns and _match_patterns(
-            title_lower,
-            patterns
-        ):
-            return True
-
-
-    return False
+    # Other languages require an explicit tag.
+    return _matches_any(detected, allowed)
 
 
 def matches_required_languages(
@@ -345,20 +439,15 @@ def matches_required_languages(
     required: list[str],
 ) -> bool:
     """
-    Check if title contains at least one of the required languages.
-    If no required languages specified, returns True (no restriction).
+    True if the release is tagged with at least one required language.
+    "unknown" matches releases without any language tag (often English).
+    No required languages means no restriction.
     """
+
     if not required:
         return True
 
-    title_lower = title.lower()
-
-    for lang in required:
-        patterns = LANGUAGE_PATTERNS.get(lang.lower())
-        if patterns and _match_patterns(title_lower, patterns):
-            return True
-
-    return False
+    return _matches_any(detect_languages(title), required)
 
 
 def matches_excluded_languages(
@@ -366,22 +455,15 @@ def matches_excluded_languages(
     excluded: list[str],
 ) -> bool:
     """
-    Check if title contains any of the excluded languages.
-    Returns False if any excluded language is found.
-    If no excluded languages specified, returns True (no restriction).
+    False if the release is tagged with any excluded language.
+    "unknown" excludes releases without any language tag.
+    No excluded languages means no restriction.
     """
+
     if not excluded:
         return True
 
-    title_lower = title.lower()
-
-    for lang in excluded:
-        patterns = LANGUAGE_PATTERNS.get(lang.lower())
-        if patterns and _match_patterns(title_lower, patterns):
-            return False  # Found an excluded language
-
-    return True  # No excluded languages found
-
+    return not _matches_any(detect_languages(title), excluded)
 
 
 def matches_codec(
