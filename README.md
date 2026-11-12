@@ -754,6 +754,30 @@ source checked out at `./zilean`.
 
 ---
 
+# Optional Prowlarr Integration
+
+Cauldron can search every indexer you have enabled in
+[Prowlarr](https://prowlarr.com). Prowlarr does the site-specific scraping,
+including sites behind Cloudflare such as **EXT (ext.to)** when you give that
+indexer Prowlarr's FlareSolverr proxy (Settings → Indexers → Indexer
+Proxies, matched to the indexer by tag).
+
+Set, in `.env`:
+
+```text
+PROWLARR_URL=http://prowlarr:9696
+PROWLARR_API_KEY=your_prowlarr_api_key   # Prowlarr: Settings → General
+PROWLARR_INDEXER_IDS=                    # optional, e.g. 7,12; empty = all
+```
+
+`PROWLARR_URL` must be reachable from the Cauldron container: if Prowlarr runs
+in another Compose stack, put both on a shared Docker network and use the
+container name, or use the host's LAN address and port. Results show the
+indexer they came from (e.g. `Cauldron • EXT • 1080p`) and go through the same
+title validation as every other source. Torrent results only; usenet is ignored.
+
+---
+
 # Optional Bitsearch Integration
 
 Bitsearch can be enabled or disabled independently:
@@ -778,6 +802,9 @@ Cauldron can aggregate results from the following sources:
 * **Bitsearch** — API-backed search with local request caching.
 * **Torrin** — Torrin aggregation/search integration.
 * **Zilean** *(optional)* — self-hosted hash-list metadata source.
+* **Prowlarr** *(optional)* — every indexer enabled in your own Prowlarr,
+  e.g. **EXT (ext.to)** and other Cloudflare-protected sites via Prowlarr's
+  FlareSolverr proxy. See [Optional Prowlarr Integration](#optional-prowlarr-integration).
 
 Not every source is enabled in every deployment.
 

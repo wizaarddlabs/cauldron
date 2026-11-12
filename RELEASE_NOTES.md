@@ -1,6 +1,6 @@
 # Cauldron v0.8.0
 
-Based on feedback from the r/StremioAddons announcement thread.
+Based on feedback from the r/StremioAddons announcement thread (including the ext.to request).
 
 ## Improved
 
@@ -21,6 +21,10 @@ Based on feedback from the r/StremioAddons announcement thread.
   keeps the many untagged (usually English) releases that were dropped
   before.
 - **Leechers** is now available as a sort option.
+- **New optional Prowlarr source.** Set `PROWLARR_URL` and `PROWLARR_API_KEY`
+  and Cauldron searches every indexer enabled in your Prowlarr, e.g. **EXT
+  (ext.to)** through Prowlarr's FlareSolverr proxy. `PROWLARR_INDEXER_IDS`
+  limits it to chosen indexers.
 - Accented titles match unaccented releases (Amélie / Amelie, Pokémon /
   Pokemon).
 
