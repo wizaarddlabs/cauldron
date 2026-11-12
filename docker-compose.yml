@@ -25,6 +25,9 @@ services:
       ZILEAN_ENABLED: "${ZILEAN_ENABLED:-false}"
       ZILEAN_URL: ${ZILEAN_URL:-http://zilean:8181}
       TORRIN_API_KEY: ${TORRIN_API_KEY:-}
+      PROWLARR_URL: ${PROWLARR_URL:-}
+      PROWLARR_API_KEY: ${PROWLARR_API_KEY:-}
+      PROWLARR_INDEXER_IDS: ${PROWLARR_INDEXER_IDS:-}
     restart: always
     networks:
       - cauldron-network

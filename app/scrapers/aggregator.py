@@ -10,6 +10,7 @@ from app.ranking.scorer import rank_results
 from app.scrapers.base import Scraper
 from app.scrapers.comet import CometScraper
 from app.scrapers.mediafusion import MediaFusionScraper
+from app.scrapers.prowlarr import ProwlarrScraper
 from app.scrapers.public_scraper import PublicScraper
 from app.scrapers.title_matching import result_matches_request
 
@@ -21,6 +22,7 @@ _SCRAPERS: list[Scraper] = [
     PublicScraper(),
     CometScraper(),
     MediaFusionScraper(),
+    ProwlarrScraper(),
 ]
 
 
