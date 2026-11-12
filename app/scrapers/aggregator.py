@@ -122,6 +122,8 @@ async def search_all(
     preferences: RankingPreferences | None = None,
     account_provider: str | None = None,
     account_api_key: str | None = None,
+    year: int | None = None,
+    aliases: list | None = None,
 ) -> list[TorrentResult]:
 
     logger.info(
@@ -175,6 +177,8 @@ async def search_all(
                 media_type,
                 season,
                 episode,
+                aliases=aliases,
+                year=year,
             ):
                 filtered_results.append(result)
 

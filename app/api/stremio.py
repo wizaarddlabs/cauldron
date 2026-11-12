@@ -357,6 +357,9 @@ async def stream(
             season=media["season"],
             episode=media["episode"],
             media_type=media["type"],
+            # Used to recognise localized (e.g. Spanish-titled) releases.
+            year=media.get("year"),
+            aliases=media.get("aliases"),
             # Only Torrin offers an account-history search.
             account_provider=(
                 "torrin" if torrin_account else None
