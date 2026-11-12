@@ -100,6 +100,8 @@
 
     <p class="muted small field-help" data-p2p-help>Without a debrid service, Stremio streams torrents directly from peers.</p>
 
+    <p class="muted small field-help privacy-note">🔒 Keys are stored encrypted on this server and hidden from its logs. Whoever runs a server can still use the keys saved on it, so <a href="https://github.com/wizaarddlabs/cauldron#privacy--security" target="_blank" rel="noopener noreferrer">self-host</a> for full control.</p>
+
     <div class="stream-mode" data-stream-mode>
       <label for="stream_mode">When more than one provider has a torrent</label>
       <select id="stream_mode" name="stream_mode">
@@ -138,7 +140,7 @@
 
   <section class="card">
     <h2>Languages</h2>
-    <p class="muted small">Select the languages you require, prefer, or want excluded.</p>
+    <p class="muted small">Select the languages you require, prefer, or want excluded. Many releases don't state a language (usually English): include <strong>Unknown</strong> under Required to keep them.</p>
 
     {% set language_options = [
       {'value':'arabic','label':'Arabic'},
@@ -170,7 +172,6 @@
       {'value':'malayalam','label':'Malayalam'},
       {'value':'marathi','label':'Marathi'},
       {'value':'malay','label':'Malay'},
-      {'value':'multi','label':'Multi'},
       {'value':'dutch','label':'Dutch'},
       {'value':'norwegian','label':'Norwegian'},
       {'value':'punjabi','label':'Punjabi'},
@@ -190,6 +191,13 @@
       {'value':'vietnamese','label':'Vietnamese'},
       {'value':'chinese','label':'Chinese'},
     ] | sort(attribute='label') %}
+
+    {# Not single languages; pinned first so they're easy to find. #}
+    {% set language_options = [
+      {'value':'unknown','label':'Unknown / no language tag'},
+      {'value':'multi','label':'Multi-audio'},
+      {'value':'dubbed','label':'Dubbed'},
+    ] + language_options %}
 
     {% for group, title in [('required_languages', 'Required'), ('preferred_languages', 'Preferred'), ('excluded_languages', 'Excluded')] %}
     {% set chosen = prefs[group] or [] %}
@@ -238,7 +246,7 @@
     <summary><h2 class="sorting-title">Sorting</h2><span class="summary-hint">Ranking order</span></summary>
     <p class="muted small sort-help">Move criteria to choose how results are ranked. Priority 1 is checked first; lower priorities break ties.</p>
     <div class="sortable-list" id="sortCriteria" role="list" aria-label="Sort priorities">
-      {% for value, label in [('seeders','Seeders'),('size','Size'),('resolution','Resolution'),('quality','Quality Score'),('cached','Cache Status')] %}
+      {% for value, label in [('seeders','Seeders'),('size','Size'),('resolution','Resolution'),('quality','Quality Score'),('cached','Cache Status'),('leechers','Leechers')] %}
       <div class="sortable-item" data-value="{{ value }}" role="listitem">
         <span class="sort-controls">
           <button type="button" class="sort-btn up" aria-label="Move {{ label }} up" title="Move up" onclick="moveItem(this, -1)">↑</button>

@@ -832,6 +832,30 @@ This separation keeps source searching, validation, cache checking, ranking, and
 
 ---
 
+# Privacy & Security
+
+People reasonably ask whether a debrid addon is safe to give their API keys to.
+Here is exactly what Cauldron does with them:
+
+* **Open source.** Everything the server does is in this repository (MIT
+  licence), and the published Docker images are built from it by GitHub
+  Actions after tests and linting pass.
+* **Encrypted at rest.** Each addon's settings, including its API keys, are
+  encrypted (Fernet) in `/data/cauldron.db`. The key lives in
+  `/data/cauldron.key` on the same server.
+* **Kept out of logs.** API keys and addon IDs are masked in the application
+  and access logs, including in the URLs of requests to debrid providers.
+* **Never shown back.** The setup page never pre-fills or re-displays a key.
+* **Your addon URL is a password.** Anyone with a debrid addon's URL can use
+  those debrid accounts through that server, so don't share it.
+
+What it can't protect against: whoever runs a Cauldron server holds the
+encryption key, so the operator of a **public instance** could read the keys
+saved on it. For full control, self-host (see Quick Start); it takes one
+`docker compose up -d`. With **P2P** (no debrid service) no keys are stored.
+
+---
+
 # Legal Note
 
 Cauldron is infrastructure software.

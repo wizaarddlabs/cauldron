@@ -176,6 +176,10 @@ button.add-provider {
   margin-top: 16px;
 }
 
+.privacy-note a {
+  color: var(--accent);
+}
+
 .form-error {
   margin-bottom: 16px;
   padding: 12px 14px;

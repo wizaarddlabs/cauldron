@@ -126,3 +126,15 @@ def test_privacy_note_only_for_debrid_addons(client):
 
     assert "use your debrid account" not in p2p.text
     assert "use your debrid account" in debrid.text
+
+
+def test_language_lists_pin_unknown_multi_dubbed_and_offer_leechers(client):
+    html = client.get("/").text
+
+    for group in ("required_languages", "preferred_languages", "excluded_languages"):
+        values = re.findall(rf'name="{group}" value="([a-z]+)"', html)
+        assert values[:3] == ["unknown", "multi", "dubbed"]
+        assert values.count("multi") == 1
+
+    assert 'data-value="leechers"' in html
+    assert "#privacy--security" in html
