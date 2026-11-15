@@ -2,6 +2,8 @@
 
 **A modular, open-source torrent & debrid aggregation engine for Stremio.**
 
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Cauldron-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/wizaardd)
+
 Cauldron searches multiple torrent sources, validates results against the requested movie or series, checks cache availability where supported, ranks results according to user preferences, and resolves selected torrents through a configured debrid provider.
 
 Cauldron can be used as:
@@ -880,6 +882,14 @@ What it can't protect against: whoever runs a Cauldron server holds the
 encryption key, so the operator of a **public instance** could read the keys
 saved on it. For full control, self-host (see Quick Start); it takes one
 `docker compose up -d`. With **P2P** (no debrid service) no keys are stored.
+
+---
+
+# Support
+
+Cauldron is free and open source. If it's useful to you, you can support its
+development on [Ko-fi](https://ko-fi.com/wizaardd). Bug reports, feedback and
+pull requests are just as welcome.
 
 ---
 
